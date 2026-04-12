@@ -16,8 +16,6 @@
 
 plugins {
   alias(libs.plugins.android.application)
-  // Note: set apply to true to enable google-services (requires google-services.json).
-  alias(libs.plugins.google.services) apply false
   alias(libs.plugins.kotlin.android)
   alias(libs.plugins.kotlin.compose)
   alias(libs.plugins.kotlin.serialization)
@@ -39,10 +37,8 @@ android {
     versionCode = 23
     versionName = "1.0.11"
 
-    // Needed for HuggingFace auth workflows.
-    // Use the scheme of the "Redirect URLs" in HuggingFace app.
-    manifestPlaceholders["appAuthRedirectScheme"] =
-        "REPLACE_WITH_YOUR_REDIRECT_SCHEME_IN_HUGGINGFACE_APP"
+    // Kept only to satisfy the AppAuth manifest placeholder requirement.
+    manifestPlaceholders["appAuthRedirectScheme"] = "com.google.aiedge.gallery.oss"
     manifestPlaceholders["applicationName"] = "com.google.ai.edge.gallery.GalleryApplication"
 
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
@@ -55,13 +51,22 @@ android {
       signingConfig = signingConfigs.getByName("debug")
     }
   }
+  splits {
+    abi {
+      isEnable = true
+      reset()
+      include("arm64-v8a")
+      isUniversalApk = false
+    }
+  }
   compileOptions {
     sourceCompatibility = JavaVersion.VERSION_11
     targetCompatibility = JavaVersion.VERSION_11
   }
   kotlinOptions {
     jvmTarget = "11"
-    freeCompilerArgs += "-Xcontext-receivers"
+    freeCompilerArgs += "-Xcontext-parameters"
+    freeCompilerArgs += "-Xannotation-default-target=param-property"
   }
   buildFeatures {
     compose = true
@@ -84,6 +89,7 @@ dependencies {
   implementation(libs.material.icon.extended)
   implementation(libs.androidx.work.runtime)
   implementation(libs.androidx.datastore)
+  implementation(libs.androidx.documentfile)
   implementation(libs.com.google.code.gson)
   implementation(libs.androidx.lifecycle.process)
   implementation(libs.androidx.security.crypto)
@@ -104,9 +110,6 @@ dependencies {
   implementation(libs.hilt.android)
   implementation(libs.hilt.navigation.compose)
   implementation(libs.play.services.oss.licenses)
-  implementation(platform(libs.firebase.bom))
-  implementation(libs.firebase.analytics)
-  implementation(libs.firebase.messaging)
   implementation(libs.androidx.exifinterface)
   implementation(libs.moshi.kotlin)
   kapt(libs.hilt.android.compiler)

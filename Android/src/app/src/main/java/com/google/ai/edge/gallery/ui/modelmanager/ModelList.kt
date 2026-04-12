@@ -89,6 +89,7 @@ fun ModelList(
   modelManagerViewModel: ModelManagerViewModel,
   contentPadding: PaddingValues,
   enableAnimation: Boolean,
+  onImportModelClicked: () -> Unit,
   onModelClicked: (Model) -> Unit,
   onBenchmarkClicked: (Model) -> Unit,
   modifier: Modifier = Modifier,
@@ -271,8 +272,8 @@ fun ModelList(
           Text(
             resources.getQuantityString(
               R.plurals.model_list_number_of_models_available,
-              models.size + importedModels.size,
-              models.size + importedModels.size,
+              importedModels.size,
+              importedModels.size,
             ),
             color = MaterialTheme.colorScheme.onSurface,
             style = MaterialTheme.typography.bodyMedium,
@@ -283,40 +284,6 @@ fun ModelList(
               },
           )
         }
-      }
-
-      // Title for recommended models.
-      if (!models.isEmpty())
-        item(key = "recommendedModelsTitle") {
-          Text(
-            stringResource(R.string.model_list_recommended_models_title),
-            color = MaterialTheme.colorScheme.onSurface,
-            style = MaterialTheme.typography.labelLarge,
-            modifier =
-              Modifier.padding(horizontal = 16.dp, vertical = 8.dp).graphicsLayer {
-                alpha = modelListProgress
-                translationY = (CONTENT_ANIMATION_OFFSET * (1 - modelListProgress)).toPx()
-              },
-          )
-        }
-
-      // List of models within a task.
-      items(items = models) { model ->
-        val expanded = modelItemExpandedStates.getOrDefault(model.name, null)
-        ModelItem(
-          model = model,
-          task = task,
-          modelManagerViewModel = modelManagerViewModel,
-          onModelClicked = onModelClicked,
-          onBenchmarkClicked = onBenchmarkClicked,
-          expanded = expanded,
-          onExpanded = { modelItemExpandedStates[model.name] = it },
-          modifier =
-            Modifier.graphicsLayer {
-              alpha = modelListProgress
-              translationY = (CONTENT_ANIMATION_OFFSET * (1 - modelListProgress)).toPx()
-            },
-        )
       }
 
       // Title for imported models.
@@ -339,6 +306,7 @@ fun ModelList(
 
       // List of imported models within a task.
       items(items = importedModels, key = { it.name }) { model ->
+        val expanded = modelItemExpandedStates.getOrDefault(model.name, null)
         Box {
           ModelItem(
             model = model,
@@ -346,6 +314,8 @@ fun ModelList(
             modelManagerViewModel = modelManagerViewModel,
             onModelClicked = onModelClicked,
             onBenchmarkClicked = onBenchmarkClicked,
+            expanded = expanded,
+            onExpanded = { modelItemExpandedStates[model.name] = it },
             modifier =
               Modifier.graphicsLayer {
                 alpha = modelListProgress
@@ -353,6 +323,19 @@ fun ModelList(
               },
           )
         }
+      }
+
+      item(key = "localImportCallout") {
+        LocalModelImportCallout(
+          onImportClick = onImportModelClicked,
+          modifier =
+            Modifier.padding(horizontal = 4.dp)
+              .padding(top = if (importedModels.isNotEmpty()) 24.dp else 0.dp)
+              .graphicsLayer {
+                alpha = modelListProgress
+                translationY = (CONTENT_ANIMATION_OFFSET * (1 - modelListProgress)).toPx()
+              },
+        )
       }
     }
 

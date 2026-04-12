@@ -16,7 +16,7 @@
 
 package com.google.ai.edge.gallery.customtasks.examplecustomtask
 
-import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable

@@ -54,7 +54,6 @@ import com.google.ai.edge.gallery.ui.modelmanager.ModelManagerViewModel
 import com.google.ai.edge.gallery.ui.theme.GalleryTheme
 import com.google.ai.edge.litertlm.ExperimentalApi
 import com.google.ai.edge.litertlm.ExperimentalFlags
-import com.google.firebase.analytics.FirebaseAnalytics
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -72,7 +71,7 @@ class MainActivity : ComponentActivity() {
     // Debug: Dump all intent extras to see what FCM unloads
     intent.extras?.let { extras ->
       for (key in extras.keySet()) {
-        Log.d(TAG, "onCreate Extra -> Key: $key, Value: ${extras.get(key)}")
+        Log.d(TAG, "onCreate Extra -> Key: $key, Value: ${extras.peekValue(key)}")
       }
     }
 
@@ -186,7 +185,7 @@ class MainActivity : ComponentActivity() {
     // Debug: Dump all intent extras to see what FCM unloads
     intent.extras?.let { extras ->
       for (key in extras.keySet()) {
-        Log.d(TAG, "onNewIntent Extra -> Key: $key, Value: ${extras.get(key)}")
+        Log.d(TAG, "onNewIntent Extra -> Key: $key, Value: ${extras.peekValue(key)}")
       }
     }
 
@@ -205,7 +204,7 @@ class MainActivity : ComponentActivity() {
     super.onResume()
 
     firebaseAnalytics?.logEvent(
-      FirebaseAnalytics.Event.APP_OPEN,
+      "app_open",
       bundleOf(
         "app_version" to BuildConfig.VERSION_NAME,
         "os_version" to Build.VERSION.SDK_INT.toString(),
@@ -218,3 +217,10 @@ class MainActivity : ComponentActivity() {
     private const val TAG = "AGMainActivity"
   }
 }
+
+private fun Bundle.peekValue(key: String): String? =
+  getString(key)
+    ?: getCharSequence(key)?.toString()
+    ?: getStringArray(key)?.contentToString()
+    ?: getStringArrayList(key)?.toString()
+    ?: if (containsKey(key)) "<non-string extra>" else null

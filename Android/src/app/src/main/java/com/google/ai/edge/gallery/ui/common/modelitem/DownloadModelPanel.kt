@@ -44,9 +44,7 @@ import com.google.ai.edge.gallery.R
 import com.google.ai.edge.gallery.data.Model
 import com.google.ai.edge.gallery.data.ModelDownloadStatus
 import com.google.ai.edge.gallery.data.ModelDownloadStatusType
-import com.google.ai.edge.gallery.data.RuntimeType
 import com.google.ai.edge.gallery.data.Task
-import com.google.ai.edge.gallery.ui.common.DownloadAndTryButton
 import com.google.ai.edge.gallery.ui.modelmanager.ModelManagerViewModel
 
 @OptIn(ExperimentalSharedTransitionApi::class)
@@ -114,27 +112,37 @@ fun DownloadModelPanel(
         Spacer(modifier = Modifier.width(8.dp))
       }
 
-      fun isDownloadButtonEnabled(downloadStatus: ModelDownloadStatus?, model: Model): Boolean {
-        val downloadFailed = downloadStatus?.status == ModelDownloadStatusType.FAILED
-        val isLitertLm = model.runtimeType == RuntimeType.LITERT_LM
-        return !downloadFailed || isLitertLm
+      if (downloadSucceeded) {
+        Button(
+          onClick = onTryItClicked,
+          modifier =
+            Modifier.sharedElement(
+                sharedContentState = rememberSharedContentState(key = "download_button"),
+                animatedVisibilityScope = animatedVisibilityScope,
+              )
+              .then(if (isExpanded) Modifier.weight(1f) else Modifier),
+          colors =
+            ButtonDefaults.buttonColors(
+              containerColor = MaterialTheme.colorScheme.primary,
+              contentColor = MaterialTheme.colorScheme.onPrimary,
+            ),
+          contentPadding = PaddingValues(horizontal = 12.dp),
+        ) {
+          Text(
+            text = stringResource(R.string.try_it),
+            style = MaterialTheme.typography.titleMedium,
+            maxLines = 1,
+            autoSize =
+              TextAutoSize.StepBased(minFontSize = 8.sp, maxFontSize = 16.sp, stepSize = 1.sp),
+          )
+        }
+      } else if (!model.imported) {
+        Text(
+          text = "Local import only",
+          color = MaterialTheme.colorScheme.onSurfaceVariant,
+          style = MaterialTheme.typography.bodyMedium,
+        )
       }
-
-      DownloadAndTryButton(
-        task = task,
-        model = model,
-        downloadStatus = downloadStatus,
-        enabled = isDownloadButtonEnabled(downloadStatus, model),
-        modelManagerViewModel = modelManagerViewModel,
-        onClicked = onTryItClicked,
-        compact = !isExpanded,
-        modifier =
-          Modifier.sharedElement(
-            sharedContentState = rememberSharedContentState(key = "download_button"),
-            animatedVisibilityScope = animatedVisibilityScope,
-          ),
-        modifierWhenExpanded = Modifier.weight(1f),
-      )
     }
   }
 }

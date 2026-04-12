@@ -16,7 +16,7 @@
 
 package com.google.ai.edge.gallery.ui.llmsingleturn
 
-import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 
 // import androidx.compose.ui.tooling.preview.Preview
 // import com.google.ai.edge.gallery.ui.preview.PreviewLlmSingleTurnViewModel

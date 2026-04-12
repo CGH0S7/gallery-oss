@@ -16,7 +16,7 @@
 
 package com.google.ai.edge.gallery.ui.llmchat
 
-import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 
 import android.graphics.Bitmap
 import androidx.compose.foundation.layout.Arrangement

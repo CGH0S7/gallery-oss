@@ -192,7 +192,7 @@ constructor(
   val dataStoreRepository: DataStoreRepository,
   private val lifecycleProvider: AppLifecycleProvider,
   private val customTasks: Set<@JvmSuppressWildcards CustomTask>,
-  @ApplicationContext private val context: Context,
+  @param:ApplicationContext private val context: Context,
 ) : ViewModel() {
   private val externalFilesDir = context.getExternalFilesDir(null)
   protected val _uiState = MutableStateFlow(createEmptyUiState())
@@ -874,123 +874,12 @@ constructor(
 
     viewModelScope.launch(Dispatchers.IO) {
       try {
-        // Load model allowlist json.
-        var modelAllowlist: ModelAllowlist? = null
-
-        // Try to read the test allowlist first.
-        Log.d(TAG, "Loading test model allowlist.")
-        modelAllowlist = readModelAllowlistFromDisk(fileName = MODEL_ALLOWLIST_TEST_FILENAME)
-
-        // Local test only.
-        if (TEST_MODEL_ALLOW_LIST.isNotEmpty()) {
-          Log.d(TAG, "Loading local model allowlist for testing.")
-          val gson = Gson()
-          try {
-            modelAllowlist = gson.fromJson(TEST_MODEL_ALLOW_LIST, ModelAllowlist::class.java)
-          } catch (e: JsonSyntaxException) {
-            Log.e(TAG, "Failed to parse local test json", e)
-          }
-        }
-
-        if (modelAllowlist == null) {
-          // Load from github.
-          var version = BuildConfig.VERSION_NAME.replace(".", "_")
-          val url = getAllowlistUrl(version)
-          Log.d(TAG, "Loading model allowlist from internet. Url: $url")
-          val data = getJsonResponse<ModelAllowlist>(url = url)
-          modelAllowlist = data?.jsonObj
-
-          if (modelAllowlist == null) {
-            Log.w(TAG, "Failed to load model allowlist from internet. Trying to load it from disk")
-            modelAllowlist = readModelAllowlistFromDisk()
-          } else {
-            Log.d(TAG, "Done: loading model allowlist from internet")
-            saveModelAllowlistToDisk(modelAllowlistContent = data?.textContent ?: "{}")
-          }
-        }
-
-        if (modelAllowlist == null) {
-          _uiState.update {
-            uiState.value.copy(loadingModelAllowlistError = "Failed to load model list")
-          }
-          return@launch
-        }
-
-        Log.d(TAG, "Allowlist: $modelAllowlist")
-
-        val isAICoreAvailable by lazy {
-          // Build a fast-lookup set of all supported device models.
-          // This extracts the models from all allowed groups, flattens them into a single stream,
-          // lowercases them for case-insensitive matching, and stores them in a Set.
-          val allowedDeviceModelsSet =
-            modelAllowlist.aicoreRequirements
-              ?.allowedDeviceGroups
-              ?.asSequence()
-              ?.flatMap { it.deviceModels }
-              ?.map { it.lowercase() }
-              ?.toSet()
-          isAICoreSupported(allowedDeviceModelsSet)
-        }
-
-        // Convert models in the allowlist.
         val curTasks = getActiveCustomTasks().map { it.task }
-        val nameToModel = mutableMapOf<String, Model>()
-        for (allowedModel in modelAllowlist.models) {
-          if (allowedModel.disabled == true) {
-            continue
-          }
-
-          if (allowedModel.runtimeType == RuntimeType.AICORE && !isAICoreAvailable) {
-            continue
-          }
-
-          // Ignore the allowedModel if its accelerator is only npu and this device's soc is not in
-          // its socToModelFiles.
-          val accelerators = allowedModel.defaultConfig.accelerators ?: ""
-          val acceleratorList = accelerators.split(",").map { it.trim() }.filter { it.isNotEmpty() }
-          if (acceleratorList.size == 1 && acceleratorList[0] == "npu") {
-            val socToModelFiles = allowedModel.socToModelFiles
-            if (socToModelFiles != null && !socToModelFiles.containsKey(SOC)) {
-              Log.d(
-                TAG,
-                "Ignoring model '${allowedModel.name}' because it's NPU-only and not supported on SOC: $SOC",
-              )
-              continue
-            }
-          }
-
-          val model = allowedModel.toModel()
-          nameToModel.put(model.name, model)
-          for (taskType in allowedModel.taskTypes) {
-            val task = curTasks.find { it.id == taskType }
-            task?.models?.add(model)
-
-            if (task?.id == BuiltInTaskId.LLM_TINY_GARDEN) {
-              val newConfigs = model.configs.toMutableList()
-              newConfigs.add(RESET_CONVERSATION_TURN_COUNT_CONFIG)
-              model.configs = newConfigs
-            }
-          }
-        }
-
-        // Find models from allowlist if a task's `modelNames` field is not empty.
         for (task in curTasks) {
-          if (task.modelNames.isNotEmpty()) {
-            for (modelName in task.modelNames) {
-              val model = nameToModel[modelName]
-              if (model == null) {
-                Log.w(TAG, "Model '${modelName}' in task '${task.label}' not found in allowlist.")
-                continue
-              }
-              task.models.add(model)
-            }
-          }
+          task.models.clear()
+          task.updateTrigger.value = System.currentTimeMillis()
         }
-
-        // Process all tasks.
         processTasks()
-
-        // Update UI state.
         _uiState.update {
           createUiState()
             .copy(
@@ -999,14 +888,14 @@ constructor(
               tasksByCategory = groupTasksByCategory(),
             )
         }
-
-        // Process pending downloads.
-        processPendingDownloads()
-
-        // Wait for AICore models statuses and update download indicators
-        checkAICoreModelStatuses()
       } catch (e: Exception) {
-        e.printStackTrace()
+        Log.e(TAG, "Failed to load local model library", e)
+        _uiState.update {
+          uiState.value.copy(
+            loadingModelAllowlist = false,
+            loadingModelAllowlistError = "Failed to load local model library",
+          )
+        }
       }
     }
   }
@@ -1090,6 +979,7 @@ constructor(
     val checkedModelNames = mutableSetOf<String>()
     for (customTask in getActiveCustomTasks()) {
       val task = customTask.task
+      task.models.clear()
       tasks.put(key = task.id, value = task)
       for (model in task.models) {
         if (checkedModelNames.contains(model.name)) {
@@ -1183,6 +1073,7 @@ constructor(
     val model =
       Model(
         name = info.fileName,
+        displayName = createImportedModelDisplayName(info.fileName),
         url = "",
         configs = configs,
         sizeInBytes = info.fileSize,
@@ -1204,6 +1095,20 @@ constructor(
     model.preProcess()
 
     return model
+  }
+
+  private fun createImportedModelDisplayName(fileName: String): String {
+    val baseName = fileName.substringBeforeLast(".", missingDelimiterValue = fileName)
+    return baseName
+      .replace('_', ' ')
+      .replace('-', ' ')
+      .replace(Regex("\\s+"), " ")
+      .trim()
+      .split(" ")
+      .filter { it.isNotEmpty() }
+      .joinToString(" ") { word ->
+        word.replaceFirstChar { if (it.isLowerCase()) it.titlecase() else it.toString() }
+      }
   }
 
   private fun groupTasksByCategory(): Map<String, List<Task>> {

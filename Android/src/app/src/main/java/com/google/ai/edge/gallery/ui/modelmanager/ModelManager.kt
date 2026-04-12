@@ -22,20 +22,23 @@ package com.google.ai.edge.gallery.ui.modelmanager
 // import com.google.ai.edge.gallery.ui.theme.GalleryTheme
 
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.derivedStateOf
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import com.google.ai.edge.gallery.GalleryTopAppBar
 import com.google.ai.edge.gallery.data.AppBarAction
 import com.google.ai.edge.gallery.data.AppBarActionType
 import com.google.ai.edge.gallery.data.Model
 import com.google.ai.edge.gallery.data.Task
+import com.google.ai.edge.gallery.proto.ImportedModel
 
 /** A screen to manage models. */
 @OptIn(ExperimentalMaterial3Api::class)
@@ -50,24 +53,17 @@ fun ModelManager(
 ) {
   // Set title based on the task.
   val title = task.label
-  // Model count.
-  val modelCount by remember {
-    derivedStateOf {
-      val trigger = task.updateTrigger.value
-      if (trigger >= 0) {
-        task.models.size
-      } else {
-        -1
+  var selectedLocalModelUri by remember { mutableStateOf<android.net.Uri?>(null) }
+  var selectedImportedModelInfo by remember { mutableStateOf<ImportedModel?>(null) }
+  var showImportDialog by remember { mutableStateOf(false) }
+  var showImportingDialog by remember { mutableStateOf(false) }
+  val filePickerLauncher =
+    rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+      if (uri != null) {
+        selectedLocalModelUri = uri
+        showImportDialog = true
       }
     }
-  }
-
-  // Navigate up when there are no models left.
-  LaunchedEffect(modelCount) {
-    if (modelCount == 0) {
-      navigateUp()
-    }
-  }
 
   // Handle system's edge swipe.
   BackHandler { navigateUp() }
@@ -86,10 +82,41 @@ fun ModelManager(
       modelManagerViewModel = viewModel,
       contentPadding = innerPadding,
       enableAnimation = enableAnimation,
+      onImportModelClicked = { filePickerLauncher.launch(arrayOf("*/*")) },
       onModelClicked = onModelClicked,
       onBenchmarkClicked = {},
       modifier = Modifier.fillMaxSize(),
     )
+  }
+
+  if (showImportDialog) {
+    selectedLocalModelUri?.let { uri ->
+      ModelImportDialog(
+        uri = uri,
+        onDismiss = { showImportDialog = false },
+        onDone = { info ->
+          selectedImportedModelInfo = info
+          showImportDialog = false
+          showImportingDialog = true
+        },
+      )
+    }
+  }
+
+  if (showImportingDialog) {
+    val uri = selectedLocalModelUri
+    val info = selectedImportedModelInfo
+    if (uri != null && info != null) {
+      ModelImportingDialog(
+        uri = uri,
+        info = info,
+        onDismiss = { showImportingDialog = false },
+        onDone = {
+          viewModel.addImportedLlmModel(it)
+          showImportingDialog = false
+        },
+      )
+    }
   }
 }
 

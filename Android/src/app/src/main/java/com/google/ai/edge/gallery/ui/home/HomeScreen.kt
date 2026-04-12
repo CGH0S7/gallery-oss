@@ -105,10 +105,8 @@ import androidx.compose.ui.res.vectorResource
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
@@ -116,14 +114,12 @@ import com.google.ai.edge.gallery.GalleryTopAppBar
 import com.google.ai.edge.gallery.R
 import com.google.ai.edge.gallery.data.AppBarAction
 import com.google.ai.edge.gallery.data.AppBarActionType
-import com.google.ai.edge.gallery.data.BuiltInTaskId
 import com.google.ai.edge.gallery.data.Category
 import com.google.ai.edge.gallery.data.CategoryInfo
 import com.google.ai.edge.gallery.data.Task
 import com.google.ai.edge.gallery.ui.common.RevealingText
 import com.google.ai.edge.gallery.ui.common.SwipingText
 import com.google.ai.edge.gallery.ui.common.TaskIcon
-import com.google.ai.edge.gallery.ui.common.buildTrackableUrlAnnotatedString
 import com.google.ai.edge.gallery.ui.common.rememberDelayedAnimationProgress
 import com.google.ai.edge.gallery.ui.common.tos.AppTosDialog
 import com.google.ai.edge.gallery.ui.common.tos.TosViewModel
@@ -432,15 +428,8 @@ fun HomeScreen(
                       .semantics(mergeDescendants = true) {},
                   verticalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
-                  if (gm4) {
-                    AppTitleGm4(enableAnimation = enableAnimation)
-                  } else {
-                    AppTitle(enableAnimation = enableAnimation)
-                  }
+                  AppTitle(enableAnimation = enableAnimation)
                   IntroText(enableAnimation = enableAnimation, gm4 = gm4)
-                  if (gm4) {
-                    TryGm4IntroText(enableAnimation = enableAnimation)
-                  }
                 }
 
                 // Tab header for categories.
@@ -528,7 +517,7 @@ fun HomeScreen(
         )
       },
       title = { Text(uiState.loadingModelAllowlistError) },
-      text = { Text("Please check your internet connection and try again later.") },
+      text = { Text("Please reopen the app and try again.") },
       onDismissRequest = { modelManagerViewModel.loadModelAllowlist() },
       confirmButton = {
         TextButton(onClick = { modelManagerViewModel.loadModelAllowlist() }) { Text("Retry") }
@@ -619,34 +608,7 @@ private fun AppTitle(enableAnimation: Boolean) {
 }
 
 @Composable
-fun AppTitleGm4(enableAnimation: Boolean) {
-  val text1 = "Google"
-  val text2 = "AI Edge Gallery"
-  val annotatedText = buildAnnotatedString {
-    withStyle(style = SpanStyle(color = MaterialTheme.colorScheme.onSurface)) { append(text1) }
-    append(" ")
-    withStyle(style = SpanStyle(color = MaterialTheme.colorScheme.primary)) { append(text2) }
-  }
-
-  RevealingText(
-    text = "",
-    annotatedText = annotatedText,
-    style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Medium),
-    animationDelay = 0,
-    animationDurationMs =
-      if (enableAnimation) {
-        (TITLE_FIRST_LINE_ANIMATION_DURATION + TITLE_SECOND_LINE_ANIMATION_DURATION)
-      } else {
-        0
-      },
-    extraTextPadding = 0.dp,
-  )
-}
-
-@Composable
 private fun IntroText(enableAnimation: Boolean, gm4: Boolean) {
-  val litertUrl = "https://huggingface.co/litert-community"
-
   // Intro text animation:
   //
   // fade in + slide up.
@@ -662,76 +624,10 @@ private fun IntroText(enableAnimation: Boolean, gm4: Boolean) {
     }
 
   val introText = buildAnnotatedString {
-    val gemma4Url = "https://ai.google.dev/gemma"
-    if (gm4) {
-      append("Discover the power of on-device AI models from the ")
-      append(buildTrackableUrlAnnotatedString(url = litertUrl, linkText = "LiteRT community"))
-      append(", featuring the all-new ")
-      append(buildTrackableUrlAnnotatedString(url = gemma4Url, linkText = "Gemma 4"))
-      append(".")
-    } else {
-      append("${stringResource(R.string.app_intro)} ")
-      append(
-        buildTrackableUrlAnnotatedString(
-          url = litertUrl,
-          linkText = stringResource(R.string.litert_community_label),
-        )
-      )
-    }
+    append("Run private on-device AI workflows with local LiteRT-LM models. Import .litertlm or .task files once, then use them fully offline across the app.")
   }
   Text(
     introText,
-    style = MaterialTheme.typography.bodyMedium,
-    modifier =
-      Modifier.graphicsLayer {
-        alpha = progress
-        translationY = (CONTENT_COMPOSABLES_OFFSET_Y.dp * (1 - progress)).toPx()
-      },
-  )
-}
-
-@Composable
-private fun TryGm4IntroText(enableAnimation: Boolean) {
-  // fade in + slide up.
-  val progress =
-    if (!enableAnimation) {
-      1f
-    } else {
-      rememberDelayedAnimationProgress(
-        initialDelay = TITLE_SECOND_LINE_ANIMATION_START,
-        animationDurationMs = CONTENT_COMPOSABLES_ANIMATION_DURATION,
-        animationLabel = "intro text animation",
-      )
-    }
-  Row(
-    modifier =
-      Modifier.padding(top = 24.dp).graphicsLayer {
-        alpha = progress
-        translationY = (CONTENT_COMPOSABLES_OFFSET_Y.dp * (1 - progress)).toPx()
-      },
-    verticalAlignment = Alignment.CenterVertically,
-    horizontalArrangement = Arrangement.spacedBy(8.dp),
-  ) {
-    Icon(
-      ImageVector.vectorResource(R.drawable.gemma_logo),
-      contentDescription = null,
-      modifier = Modifier.size(24.dp),
-      tint = MaterialTheme.colorScheme.primary,
-    )
-    Text(
-      text = "Try Gemma 4 today",
-      style =
-        MaterialTheme.typography.headlineSmall.copy(
-          fontWeight = FontWeight.Medium,
-          fontSize = 20.sp,
-          lineHeight = 24.sp,
-        ),
-      color = MaterialTheme.colorScheme.onSurface,
-    )
-  }
-
-  Text(
-    "Gemma 4 E2B & E4B are here! Try them in AI Chat, Agent Skills, or the use cases below.",
     style = MaterialTheme.typography.bodyMedium,
     modifier =
       Modifier.graphicsLayer {
@@ -849,58 +745,23 @@ private fun TaskList(
     initialAnimationDone = true
   }
 
-  // The highlighted tiles at the top.
-  if (gm4) {
-    Column(
-      verticalArrangement = Arrangement.spacedBy(10.dp),
-      modifier =
-        Modifier.padding(horizontal = 24.dp).graphicsLayer {
-          alpha = progress
-          translationY = (CONTENT_COMPOSABLES_OFFSET_Y.dp * (1 - progress)).toPx()
-        },
-    ) {
-      val chatToDescription =
-        mapOf(
-          BuiltInTaskId.LLM_CHAT to "Chat with the latest Gemma 4 model today",
-          // use "\u00a0" to make sure the word before and after it should always be together when
-          // wrapping lines.
-          BuiltInTaskId.LLM_AGENT_CHAT to "Have Gemma 4 complete agentic tasks for\u00A0you",
-        )
-      for (task in
-        listOf(
-          modelManagerViewModel.getTaskById(BuiltInTaskId.LLM_CHAT)!!,
-          modelManagerViewModel.getTaskById(BuiltInTaskId.LLM_AGENT_CHAT)!!,
-        )) {
-        TaskCard(
-          task = task,
-          index = 0,
-          animate = !initialAnimationDone && enableAnimation,
-          onClick = { navigateToTaskScreen(task) },
-          modifier = Modifier.fillMaxWidth(),
-          description = chatToDescription[task.id]!!,
-        )
-      }
-
-      Text(
-        text = "Explore other use cases",
-        style =
-          MaterialTheme.typography.headlineSmall.copy(
-            fontWeight = FontWeight.Medium,
-            fontSize = 20.sp,
-            lineHeight = 24.sp,
-          ),
-        color = MaterialTheme.colorScheme.onSurface,
-        modifier = Modifier.padding(top = 22.dp, bottom = 16.dp),
-      )
-    }
-  }
-
   HorizontalPager(
     state = pagerState,
     verticalAlignment = Alignment.Top,
     contentPadding = PaddingValues(horizontal = 20.dp),
   ) { pageIndex ->
-    val tasks = tasksByCategories[sortedCategories[pageIndex].id]!!
+    val tasks =
+      tasksByCategories[sortedCategories[pageIndex].id]!!.let { originalTasks ->
+        if (grid && originalTasks.size >= 4) {
+          buildList {
+            addAll(originalTasks.drop(2).take(2))
+            addAll(originalTasks.take(2))
+            addAll(originalTasks.drop(4))
+          }
+        } else {
+          originalTasks
+        }
+      }
     if (grid) {
       Column(
         verticalArrangement = Arrangement.spacedBy(16.dp),
