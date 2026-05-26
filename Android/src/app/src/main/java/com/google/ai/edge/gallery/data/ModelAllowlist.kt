@@ -19,6 +19,7 @@ package com.google.ai.edge.gallery.data
 import android.os.Build
 import android.util.Log
 import com.google.ai.edge.gallery.common.isPixel10
+import com.google.ai.edge.gallery.common.isPixelDevice
 import com.google.gson.annotations.SerializedName
 
 private const val TAG = "AGModelAllowlist"
@@ -56,7 +57,7 @@ data class AllowedModel(
   val llmSupportAudio: Boolean? = null,
   val llmSupportTinyGarden: Boolean? = null,
   val llmSupportMobileActions: Boolean? = null,
-  val llmSupportThinking: Boolean? = null,
+  val capabilities: List<ModelCapability>? = null,
   val minDeviceMemoryInGb: Int? = null,
   val bestForTaskTypes: List<String>? = null,
   val localModelFilePathOverride: String? = null,
@@ -65,6 +66,11 @@ data class AllowedModel(
   val runtimeType: RuntimeType? = null,
   val aicoreReleaseStage: AICoreModelReleaseStage? = null,
   val aicorePreference: AICoreModelPreference? = null,
+  val parentModelName: String? = null,
+  val variantLabel: String? = null,
+  val capabilityToTaskTypes: Map<ModelCapability, List<String>>? = null,
+  val updatableModelFiles: List<ModelFile>? = null,
+  val updateInfo: String? = null,
 ) {
   fun toModel(): Model {
     // Construct HF download url.
@@ -102,14 +108,23 @@ data class AllowedModel(
     var llmMaxContextLength: Int? = null
     var accelerators: List<Accelerator> = DEFAULT_ACCELERATORS
     var visionAccelerator: Accelerator = DEFAULT_VISION_ACCELERATOR
+
+    var finalDescription = description
+    var acceleratorsStr = defaultConfig.accelerators
+
+    if (isPixelDevice()) {
+      finalDescription = description.replace(Regex("\\bNPU\\b"), "TPU")
+      acceleratorsStr = acceleratorsStr?.replace(Regex("\\bnpu\\b"), "tpu")
+    }
+
     if (isLlmModel) {
       val defaultTopK: Int = defaultConfig.topK ?: DEFAULT_TOPK
       val defaultTopP: Float = defaultConfig.topP ?: DEFAULT_TOPP
       val defaultTemperature: Float = defaultConfig.temperature ?: DEFAULT_TEMPERATURE
       llmMaxToken = defaultConfig.maxTokens ?: 1024
       llmMaxContextLength = defaultConfig.maxContextLength
-      if (defaultConfig.accelerators != null) {
-        val items = defaultConfig.accelerators.split(",")
+      if (acceleratorsStr != null) {
+        val items = acceleratorsStr.split(",")
         accelerators = mutableListOf()
         for (item in items) {
           if (item == "cpu") {
@@ -118,6 +133,8 @@ data class AllowedModel(
             accelerators.add(Accelerator.GPU)
           } else if (item == "npu") {
             accelerators.add(Accelerator.NPU)
+          } else if (item == "tpu") {
+            accelerators.add(Accelerator.TPU)
           }
         }
         // Remove GPU from pixel 10 devices.
@@ -135,7 +152,9 @@ data class AllowedModel(
           visionAccelerator = Accelerator.NPU
         }
       }
-      val npuOnly = accelerators.size == 1 && accelerators[0] == Accelerator.NPU
+      val npuOnly =
+        accelerators.size == 1 &&
+          (accelerators[0] == Accelerator.NPU || accelerators[0] == Accelerator.TPU)
       configs =
         (if (runtimeType == RuntimeType.AICORE) {
             createAICoreConfigs(
@@ -157,7 +176,9 @@ data class AllowedModel(
               defaultMaxToken = llmMaxToken,
               defaultMaxContextLength = llmMaxContextLength,
               accelerators = accelerators,
-              supportThinking = llmSupportThinking == true,
+              supportThinking = capabilities?.contains(ModelCapability.LLM_THINKING) == true,
+              supportSpeculativeDecoding =
+                capabilities?.contains(ModelCapability.SPECULATIVE_DECODING) == true,
             )
           })
           .toMutableList()
@@ -180,7 +201,7 @@ data class AllowedModel(
     return Model(
       name = name,
       version = version,
-      info = description,
+      info = finalDescription,
       url = downloadUrl,
       sizeInBytes = sizeInBytes,
       minDeviceMemoryInGb = minDeviceMemoryInGb,
@@ -193,7 +214,7 @@ data class AllowedModel(
       llmSupportAudio = llmSupportAudio == true,
       llmSupportTinyGarden = llmSupportTinyGarden == true,
       llmSupportMobileActions = llmSupportMobileActions == true,
-      llmSupportThinking = llmSupportThinking == true,
+      capabilities = capabilities ?: emptyList(),
       llmMaxToken = llmMaxToken,
       accelerators = accelerators,
       visionAccelerator = visionAccelerator,
@@ -203,6 +224,12 @@ data class AllowedModel(
       runtimeType = runtimeType ?: RuntimeType.LITERT_LM,
       aicoreReleaseStage = aicoreReleaseStage,
       aicorePreference = aicorePreference,
+      parentModelName = parentModelName,
+      variantLabel = variantLabel,
+      capabilityToTaskTypes = capabilityToTaskTypes ?: emptyMap(),
+      updatableModelFiles = updatableModelFiles ?: listOf(),
+      updateInfo = updateInfo ?: "",
+      latestModelFile = ModelFile(fileName = downloadedFileName, commitHash = version),
     )
   }
 

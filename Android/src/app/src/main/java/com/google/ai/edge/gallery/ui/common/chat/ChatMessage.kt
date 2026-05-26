@@ -63,15 +63,18 @@ open class ChatMessage(
   open val hideSenderLabel: Boolean = false,
   open val disableBubbleShape: Boolean = false,
 ) {
+
   open fun clone(): ChatMessage {
-    return ChatMessage(
-      type = type,
-      side = side,
-      latencyMs = latencyMs,
-      accelerator = accelerator,
-      hideSenderLabel = hideSenderLabel,
-      disableBubbleShape = disableBubbleShape,
-    )
+    val cloned =
+      ChatMessage(
+        type = type,
+        side = side,
+        latencyMs = latencyMs,
+        accelerator = accelerator,
+        hideSenderLabel = hideSenderLabel,
+        disableBubbleShape = disableBubbleShape,
+      )
+    return cloned
   }
 }
 
@@ -126,16 +129,18 @@ open class ChatMessageText(
     hideSenderLabel = hideSenderLabel,
   ) {
   override fun clone(): ChatMessageText {
-    return ChatMessageText(
-      content = content,
-      side = side,
-      latencyMs = latencyMs,
-      accelerator = accelerator,
-      isMarkdown = isMarkdown,
-      llmBenchmarkResult = llmBenchmarkResult,
-      hideSenderLabel = hideSenderLabel,
-      data = data,
-    )
+    val cloned =
+      ChatMessageText(
+        content = content,
+        side = side,
+        latencyMs = latencyMs,
+        accelerator = accelerator,
+        isMarkdown = isMarkdown,
+        llmBenchmarkResult = llmBenchmarkResult,
+        hideSenderLabel = hideSenderLabel,
+        data = data,
+      )
+    return cloned
   }
 }
 
@@ -148,6 +153,11 @@ class ChatMessageImage(
   override val latencyMs: Float = 0f,
   override val accelerator: String = "",
   override val hideSenderLabel: Boolean = false,
+  /**
+   * Caches the local absolute file paths to avoid redundant PNG compressions across session
+   * updates.
+   */
+  var persistedPaths: List<String>? = null,
 ) :
   ChatMessage(
     type = ChatMessageType.IMAGE,
@@ -164,6 +174,7 @@ class ChatMessageImage(
       latencyMs = latencyMs,
       accelerator = accelerator,
       hideSenderLabel = hideSenderLabel,
+      persistedPaths = persistedPaths?.toList(),
     )
   }
 }
@@ -174,6 +185,10 @@ class ChatMessageAudioClip(
   val sampleRate: Int,
   override val side: ChatSide,
   override val latencyMs: Float = 0f,
+  /**
+   * Caches the local absolute file path to bypass redundant disk write I/O during session saves.
+   */
+  var persistedPath: String? = null,
 ) : ChatMessage(type = ChatMessageType.AUDIO_CLIP, side = side, latencyMs = latencyMs) {
   override fun clone(): ChatMessageAudioClip {
     return ChatMessageAudioClip(
@@ -181,6 +196,7 @@ class ChatMessageAudioClip(
       sampleRate = sampleRate,
       side = side,
       latencyMs = latencyMs,
+      persistedPath = persistedPath,
     )
   }
 

@@ -97,18 +97,21 @@ class TinyGardenTask @Inject constructor() : CustomTask {
       models = mutableListOf(),
       handleModelConfigChangesInTask = true,
       experimental = true,
+      defaultSystemPrompt = SYSTEM_PROMPT,
     )
 
   override fun initializeModelFn(
     context: Context,
     coroutineScope: CoroutineScope,
     model: Model,
+    systemInstruction: Contents?,
     onDone: (String) -> Unit,
   ) {
     clearQueue()
     LlmChatModelHelper.initialize(
       context = context,
       model = model,
+      taskId = task.id,
       supportImage = false,
       supportAudio = false,
       onDone = onDone,

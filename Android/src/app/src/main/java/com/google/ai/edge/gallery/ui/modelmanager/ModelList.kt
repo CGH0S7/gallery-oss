@@ -120,231 +120,253 @@ fun ModelList(
         }
       }
     }
+  val modelVariants by
+    remember(task) {
+      derivedStateOf {
+        val trigger = task.updateTrigger.value
+        if (trigger >= 0) {
+          task.models
+            .toList()
+            .filter { it.parentModelName != null }
+            .groupBy { it.parentModelName!! }
+        } else {
+          mapOf()
+        }
+      }
+    }
 
   val listState = rememberLazyListState()
 
   val taskIconProgress =
-    if (!enableAnimation) 1f
-    else
+    if (!enableAnimation) {
+      1f
+    } else {
       rememberDelayedAnimationProgress(
         initialDelay = ANIMATION_INIT_DELAY,
         animationDurationMs = TASK_ICON_ANIMATION_DURATION,
         animationLabel = "task icon",
       )
+    }
 
   val taskLabelProgress =
-    if (!enableAnimation) 1f
-    else
+    if (!enableAnimation) {
+      1f
+    } else {
       rememberDelayedAnimationProgress(
         initialDelay = ANIMATION_INIT_DELAY + 300,
         animationDurationMs = TASK_ICON_ANIMATION_DURATION,
         animationLabel = "task label",
       )
+    }
 
   val descriptionProgress =
-    if (!enableAnimation) 1f
-    else
+    if (!enableAnimation) {
+      1f
+    } else {
       rememberDelayedAnimationProgress(
         initialDelay = ANIMATION_INIT_DELAY + TASK_DESCRIPTION_SECTION_ANIMATION_START,
         animationDurationMs = DEFAULT_ANIMATION_DURATION,
         animationLabel = "description",
       )
+    }
 
   val modelListProgress =
-    if (!enableAnimation) 1f
-    else
+    if (!enableAnimation) {
+      1f
+    } else {
       rememberDelayedAnimationProgress(
         initialDelay = ANIMATION_INIT_DELAY + MODEL_LIST_ANIMATION_START,
         animationDurationMs = DEFAULT_ANIMATION_DURATION,
         animationLabel = "model_list",
       )
+    }
   val modelItemExpandedStates = remember { mutableStateMapOf<String, Boolean>() }
 
   Box(
-    modifier = modifier.background(color = getTaskBgColor(task = task)),
+    contentAlignment = Alignment.BottomEnd,
+    modifier = Modifier.background(color = getTaskBgColor(task = task)),
   ) {
-    Box(
-      contentAlignment = Alignment.TopCenter,
-      modifier = Modifier.fillMaxWidth(),
-    ) {
+    Box(contentAlignment = Alignment.TopCenter, modifier = Modifier.fillMaxWidth()) {
       LazyColumn(
         modifier =
-          Modifier.widthIn(max = MODEL_MANAGER_CONTENT_MAX_WIDTH)
+          modifier
+            .widthIn(max = MODEL_MANAGER_CONTENT_MAX_WIDTH)
             .fillMaxWidth()
             .padding(horizontal = 16.dp),
         contentPadding = contentPadding,
         verticalArrangement = Arrangement.spacedBy(8.dp),
         state = listState,
       ) {
-        // Task header area.
-        item(key = "taskHeader") {
-          Spacer(modifier = Modifier.height(32.dp))
-          Column(
-            verticalArrangement = Arrangement.spacedBy(8.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            modifier = Modifier.fillMaxWidth().padding(bottom = 24.dp),
-          ) {
-            // Task icon.
-            TaskIcon(task = task, width = 64.dp, animationProgress = taskIconProgress)
+      // Task header area.
+      item(key = "taskHeader") {
+        Spacer(modifier = Modifier.height(32.dp))
+        Column(
+          verticalArrangement = Arrangement.spacedBy(8.dp),
+          horizontalAlignment = Alignment.CenterHorizontally,
+          modifier = Modifier.fillMaxWidth().padding(bottom = 24.dp),
+        ) {
+          // Task icon.
+          TaskIcon(task = task, width = 64.dp, animationProgress = taskIconProgress)
 
-            // Task name.
+          // Task name.
+          Box(
+            modifier =
+              Modifier.offset(x = (20f * (1f - taskIconProgress)).dp).semantics {
+                contentDescription = task.label
+              }
+          ) {
+            RevealingText(
+              text = task.label,
+              style =
+                headlineLargeMedium.copy(
+                  brush = Brush.linearGradient(getTaskBgGradientColors(task = task))
+                ),
+              textAlign = TextAlign.Center,
+              animationProgress = taskIconProgress,
+            )
+            RevealingText(
+              text = task.label,
+              style = headlineLargeMedium,
+              textAlign = TextAlign.Center,
+              animationProgress = taskLabelProgress,
+            )
+          }
+
+          // Experimental pill
+          if (task.experimental) {
+            Box(modifier = Modifier.fillMaxWidth()) {
+              Surface(
+                shape = CircleShape, // This creates the "pill" effect
+                color = MaterialTheme.colorScheme.secondaryContainer,
+                modifier =
+                  Modifier.align(Alignment.Center).graphicsLayer {
+                    alpha = descriptionProgress
+                    translationY = (CONTENT_ANIMATION_OFFSET * (1 - descriptionProgress)).toPx()
+                  },
+              ) {
+                Text(
+                  text = stringResource(R.string.model_list_experimental_label),
+                  style = bodyLargeNarrow.copy(fontWeight = FontWeight.Bold),
+                  modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
+                )
+              }
+            }
+          }
+
+          // Description.
+          Text(
+            task.description,
+            textAlign = TextAlign.Center,
+            style = bodyLargeNarrow,
+            modifier =
+              Modifier.graphicsLayer {
+                alpha = descriptionProgress
+                translationY = (CONTENT_ANIMATION_OFFSET * (1 - descriptionProgress)).toPx()
+              },
+          )
+
+          // Urls.
+          if (task.docUrl.isNotEmpty() || task.sourceCodeUrl.isNotEmpty()) {
             Box(
               modifier =
-                Modifier.offset(x = (20f * (1f - taskIconProgress)).dp).semantics {
-                  contentDescription = task.label
+                Modifier.padding(vertical = 8.dp).graphicsLayer {
+                  alpha = descriptionProgress
+                  translationY = (CONTENT_ANIMATION_OFFSET * (1 - descriptionProgress)).toPx()
                 }
             ) {
-              RevealingText(
-                text = task.label,
-                style =
-                  headlineLargeMedium.copy(
-                    brush = Brush.linearGradient(getTaskBgGradientColors(task = task))
-                  ),
-                textAlign = TextAlign.Center,
-                animationProgress = taskIconProgress,
-              )
-              RevealingText(
-                text = task.label,
-                style = headlineLargeMedium,
-                textAlign = TextAlign.Center,
-                animationProgress = taskLabelProgress,
-              )
-            }
-
-            // Experimental pill
-            if (task.experimental) {
-              Box(modifier = Modifier.fillMaxWidth()) {
-                Surface(
-                  shape = CircleShape, // This creates the "pill" effect
-                  color = MaterialTheme.colorScheme.secondaryContainer,
-                  modifier =
-                    Modifier.align(Alignment.Center).graphicsLayer {
-                      alpha = descriptionProgress
-                      translationY = (CONTENT_ANIMATION_OFFSET * (1 - descriptionProgress)).toPx()
-                    },
-                ) {
-                  Text(
-                    text = stringResource(R.string.model_list_experimental_label),
-                    style = bodyLargeNarrow.copy(fontWeight = FontWeight.Bold),
-                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
+              Column(
+                horizontalAlignment = Alignment.Start,
+                verticalArrangement = Arrangement.spacedBy(4.dp),
+              ) {
+                if (task.docUrl.isNotEmpty()) {
+                  ClickableLink(
+                    url = task.docUrl,
+                    linkText = "API Documentation",
+                    icon = Icons.Outlined.Description,
+                  )
+                }
+                if (task.sourceCodeUrl.isNotEmpty()) {
+                  ClickableLink(
+                    url = task.sourceCodeUrl,
+                    linkText = "Example code",
+                    icon = Icons.Outlined.Code,
                   )
                 }
               }
             }
-
-            // Description.
-            Text(
-              task.description,
-              textAlign = TextAlign.Center,
-              style = bodyLargeNarrow,
-              modifier =
-                Modifier.graphicsLayer {
-                  alpha = descriptionProgress
-                  translationY = (CONTENT_ANIMATION_OFFSET * (1 - descriptionProgress)).toPx()
-                },
-            )
-
-            // Urls.
-            if (task.docUrl.isNotEmpty() || task.sourceCodeUrl.isNotEmpty()) {
-              Box(
-                modifier =
-                  Modifier.padding(vertical = 8.dp).graphicsLayer {
-                    alpha = descriptionProgress
-                    translationY = (CONTENT_ANIMATION_OFFSET * (1 - descriptionProgress)).toPx()
-                  }
-              ) {
-                Column(
-                  horizontalAlignment = Alignment.Start,
-                  verticalArrangement = Arrangement.spacedBy(4.dp),
-                ) {
-                  if (task.docUrl.isNotEmpty()) {
-                    ClickableLink(
-                      url = task.docUrl,
-                      linkText = "API Documentation",
-                      icon = Icons.Outlined.Description,
-                    )
-                  }
-                  if (task.sourceCodeUrl.isNotEmpty()) {
-                    ClickableLink(
-                      url = task.sourceCodeUrl,
-                      linkText = "Example code",
-                      icon = Icons.Outlined.Code,
-                    )
-                  }
-                }
-              }
-            }
-
-            // Models available.
-            val resources = LocalContext.current.resources
-            Text(
-              resources.getQuantityString(
-                R.plurals.model_list_number_of_models_available,
-                importedModels.size,
-                importedModels.size,
-              ),
-              color = MaterialTheme.colorScheme.onSurface,
-              style = MaterialTheme.typography.bodyMedium,
-              modifier =
-                Modifier.alpha(0.6f).graphicsLayer {
-                  alpha = descriptionProgress * 0.6f
-                  translationY = (CONTENT_ANIMATION_OFFSET * (1 - descriptionProgress)).toPx()
-                },
-            )
           }
-        }
 
-        // Title for imported models.
-        if (importedModels.isNotEmpty()) {
-          item(key = "importedModelsTitle") {
-            Text(
-              stringResource(R.string.model_list_imported_models_title),
-              color = MaterialTheme.colorScheme.onSurface,
-              style = MaterialTheme.typography.labelLarge,
-              modifier =
-                Modifier.padding(horizontal = 16.dp)
-                  .padding(top = 32.dp, bottom = 8.dp)
-                  .graphicsLayer {
-                    alpha = modelListProgress
-                    translationY = (CONTENT_ANIMATION_OFFSET * (1 - modelListProgress)).toPx()
-                  },
-            )
-          }
-        }
-
-        // List of imported models within a task.
-        items(items = importedModels, key = { it.name }) { model ->
-          val expanded = modelItemExpandedStates.getOrDefault(model.name, null)
-          Box {
-            ModelItem(
-              model = model,
-              task = task,
-              modelManagerViewModel = modelManagerViewModel,
-              onModelClicked = onModelClicked,
-              onBenchmarkClicked = onBenchmarkClicked,
-              expanded = expanded,
-              onExpanded = { modelItemExpandedStates[model.name] = it },
-              modifier =
-                Modifier.graphicsLayer {
-                  alpha = modelListProgress
-                  translationY = (CONTENT_ANIMATION_OFFSET * (1 - modelListProgress)).toPx()
-                },
-            )
-          }
-        }
-
-        item(key = "localImportCallout") {
-          LocalModelImportCallout(
-            onImportClick = onImportModelClicked,
+          // Models available.
+          val resources = LocalContext.current.resources
+          Text(
+            resources.getQuantityString(
+              R.plurals.model_list_number_of_models_available,
+              importedModels.size,
+              importedModels.size,
+            ),
+            color = MaterialTheme.colorScheme.onSurface,
+            style = MaterialTheme.typography.bodyMedium,
             modifier =
-              Modifier.padding(horizontal = 4.dp)
-                .padding(top = if (importedModels.isNotEmpty()) 24.dp else 0.dp)
+              Modifier.alpha(0.6f).graphicsLayer {
+                alpha = descriptionProgress * 0.6f
+                translationY = (CONTENT_ANIMATION_OFFSET * (1 - descriptionProgress)).toPx()
+              },
+          )
+        }
+      }
+
+      // Title for imported models.
+      if (importedModels.isNotEmpty()) {
+        item(key = "importedModelsTitle") {
+          Text(
+            stringResource(R.string.model_list_imported_models_title),
+            color = MaterialTheme.colorScheme.onSurface,
+            style = MaterialTheme.typography.labelLarge,
+            modifier =
+              Modifier.padding(horizontal = 16.dp)
+                .padding(top = 32.dp, bottom = 8.dp)
                 .graphicsLayer {
                   alpha = modelListProgress
                   translationY = (CONTENT_ANIMATION_OFFSET * (1 - modelListProgress)).toPx()
                 },
           )
         }
+      }
+
+      // List of imported models within a task.
+      items(items = importedModels, key = { it.name }) { model ->
+        val expanded = modelItemExpandedStates.getOrDefault(model.name, null)
+        Box {
+          ModelItem(
+            model = model,
+            task = task,
+            modelManagerViewModel = modelManagerViewModel,
+            onModelClicked = onModelClicked,
+            onBenchmarkClicked = onBenchmarkClicked,
+            expanded = expanded,
+            onExpanded = { modelItemExpandedStates[model.name] = it },
+            showBenchmarkButton = true,
+            modifier =
+              Modifier.graphicsLayer {
+                alpha = modelListProgress
+                translationY = (CONTENT_ANIMATION_OFFSET * (1 - modelListProgress)).toPx()
+              },
+          )
+        }
+      }
+
+      item(key = "localImportCallout") {
+        LocalModelImportCallout(
+          onImportClick = onImportModelClicked,
+          modifier =
+            Modifier.padding(horizontal = 4.dp)
+              .padding(top = if (importedModels.isNotEmpty()) 24.dp else 0.dp)
+              .graphicsLayer {
+                alpha = modelListProgress
+                translationY = (CONTENT_ANIMATION_OFFSET * (1 - modelListProgress)).toPx()
+              },
+        )
+      }
       }
     }
 

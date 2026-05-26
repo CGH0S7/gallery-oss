@@ -16,15 +16,33 @@
 
 package com.google.ai.edge.gallery.ui.common.chat
 
+import android.content.Context
+import android.graphics.Bitmap
 import android.util.Log
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.datastore.core.DataStore
 import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
 import com.google.ai.edge.gallery.common.processLlmResponse
 import com.google.ai.edge.gallery.data.ConfigKeys
 import com.google.ai.edge.gallery.data.Model
+import com.google.ai.edge.gallery.proto.AudioMessageProto
+import com.google.ai.edge.gallery.proto.ChatMessageProto
+import com.google.ai.edge.gallery.proto.ChatSessionProto
+import com.google.ai.edge.gallery.proto.ChatSideProto
+import com.google.ai.edge.gallery.proto.UserData
+import java.io.File
+import java.io.FileOutputStream
+import java.util.UUID
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.launch
 
 private const val TAG = "AGChatViewModel"
 
@@ -48,9 +66,21 @@ data class ChatUiState(
 )
 
 /** ViewModel responsible for managing the chat UI state and handling chat-related operations. */
-abstract class ChatViewModel() : ViewModel() {
+abstract class ChatViewModel(val userDataDataStore: DataStore<UserData>? = null) : ViewModel() {
+  var currentSessionId: String = UUID.randomUUID().toString()
+
   private val _uiState = MutableStateFlow(createUiState())
   val uiState = _uiState.asStateFlow()
+
+  val historySessions: StateFlow<List<ChatSessionProto>> =
+    userDataDataStore
+      ?.data
+      ?.map { userData -> userData.chatSessionsList.sortedByDescending { it.timestampMs } }
+      ?.stateIn(
+        scope = viewModelScope,
+        started = SharingStarted.WhileSubscribed(5000),
+        initialValue = emptyList(),
+      ) ?: MutableStateFlow(emptyList())
 
   fun addMessage(model: Model, message: ChatMessage) {
     val newMessagesByModel = _uiState.value.messagesByModel.toMutableMap()
@@ -61,7 +91,7 @@ abstract class ChatViewModel() : ViewModel() {
       newMessages.removeAt(newMessages.size - 1)
     }
     newMessages.add(message)
-    _uiState.update { _uiState.value.copy(messagesByModel = newMessagesByModel) }
+    _uiState.update { it.copy(messagesByModel = newMessagesByModel) }
   }
 
   fun insertMessageAfter(model: Model, anchorMessage: ChatMessage, messageToAdd: ChatMessage) {
@@ -74,7 +104,7 @@ abstract class ChatViewModel() : ViewModel() {
       // Insert the new message after the anchor message
       newMessages.add(anchorIndex + 1, messageToAdd)
     }
-    _uiState.update { _uiState.value.copy(messagesByModel = newMessagesByModel) }
+    _uiState.update { it.copy(messagesByModel = newMessagesByModel) }
   }
 
   fun removeMessageAt(model: Model, index: Int) {
@@ -86,7 +116,7 @@ abstract class ChatViewModel() : ViewModel() {
         newMessages.removeAt(index)
       }
     }
-    _uiState.update { _uiState.value.copy(messagesByModel = newMessagesByModel) }
+    _uiState.update { it.copy(messagesByModel = newMessagesByModel) }
   }
 
   fun removeLastMessage(model: Model) {
@@ -96,13 +126,13 @@ abstract class ChatViewModel() : ViewModel() {
       newMessages.removeAt(newMessages.size - 1)
     }
     newMessagesByModel[model.name] = newMessages
-    _uiState.update { _uiState.value.copy(messagesByModel = newMessagesByModel) }
+    _uiState.update { it.copy(messagesByModel = newMessagesByModel) }
   }
 
   fun clearAllMessages(model: Model) {
     val newMessagesByModel = _uiState.value.messagesByModel.toMutableMap()
     newMessagesByModel[model.name] = mutableListOf()
-    _uiState.update { _uiState.value.copy(messagesByModel = newMessagesByModel) }
+    _uiState.update { it.copy(messagesByModel = newMessagesByModel) }
   }
 
   fun getLastMessage(model: Model): ChatMessage? {
@@ -143,8 +173,7 @@ abstract class ChatViewModel() : ViewModel() {
       }
     }
     newMessagesByModel[model.name] = newMessages
-    val newUiState = _uiState.value.copy(messagesByModel = newMessagesByModel)
-    _uiState.update { newUiState }
+    _uiState.update { it.copy(messagesByModel = newMessagesByModel) }
   }
 
   fun updateLastTextMessageContentIncrementally(
@@ -171,8 +200,7 @@ abstract class ChatViewModel() : ViewModel() {
       }
     }
     newMessagesByModel[model.name] = newMessages
-    val newUiState = _uiState.value.copy(messagesByModel = newMessagesByModel)
-    _uiState.update { newUiState }
+    _uiState.update { it.copy(messagesByModel = newMessagesByModel) }
   }
 
   fun updateLastTextMessageLlmBenchmarkResult(
@@ -190,8 +218,7 @@ abstract class ChatViewModel() : ViewModel() {
       }
     }
     newMessagesByModel[model.name] = newMessages
-    val newUiState = _uiState.value.copy(messagesByModel = newMessagesByModel)
-    _uiState.update { newUiState }
+    _uiState.update { it.copy(messagesByModel = newMessagesByModel) }
   }
 
   fun replaceLastMessage(model: Model, message: ChatMessage, type: ChatMessageType) {
@@ -204,8 +231,7 @@ abstract class ChatViewModel() : ViewModel() {
       }
     }
     newMessagesByModel[model.name] = newMessages
-    val newUiState = _uiState.value.copy(messagesByModel = newMessagesByModel)
-    _uiState.update { newUiState }
+    _uiState.update { it.copy(messagesByModel = newMessagesByModel) }
   }
 
   fun replaceMessage(model: Model, index: Int, message: ChatMessage) {
@@ -215,14 +241,13 @@ abstract class ChatViewModel() : ViewModel() {
       newMessages[index] = message
     }
     newMessagesByModel[model.name] = newMessages
-    val newUiState = _uiState.value.copy(messagesByModel = newMessagesByModel)
-    _uiState.update { newUiState }
+    _uiState.update { it.copy(messagesByModel = newMessagesByModel) }
   }
 
   fun updateStreamingMessage(model: Model, message: ChatMessage) {
     val newStreamingMessagesByModel = _uiState.value.streamingMessagesByModel.toMutableMap()
     newStreamingMessagesByModel[model.name] = message
-    _uiState.update { _uiState.value.copy(streamingMessagesByModel = newStreamingMessagesByModel) }
+    _uiState.update { it.copy(streamingMessagesByModel = newStreamingMessagesByModel) }
   }
 
   fun updateCollapsableProgressPanelMessage(
@@ -308,7 +333,7 @@ abstract class ChatViewModel() : ViewModel() {
       }
     }
     newMessagesByModel[model.name] = newMessages
-    _uiState.update { _uiState.value.copy(messagesByModel = newMessagesByModel) }
+    _uiState.update { it.copy(messagesByModel = newMessagesByModel) }
   }
 
   fun addLogMessageToLastCollapsableProgressPanel(model: Model, logMessage: LogMessage) {
@@ -335,19 +360,19 @@ abstract class ChatViewModel() : ViewModel() {
       }
     }
     newMessagesByModel[model.name] = newMessages
-    _uiState.update { _uiState.value.copy(messagesByModel = newMessagesByModel) }
+    _uiState.update { it.copy(messagesByModel = newMessagesByModel) }
   }
 
   fun setInProgress(inProgress: Boolean) {
-    _uiState.update { _uiState.value.copy(inProgress = inProgress) }
+    _uiState.update { it.copy(inProgress = inProgress) }
   }
 
   fun setIsResettingSession(isResettingSession: Boolean) {
-    _uiState.update { _uiState.value.copy(isResettingSession = isResettingSession) }
+    _uiState.update { it.copy(isResettingSession = isResettingSession) }
   }
 
   fun setPreparing(preparing: Boolean) {
-    _uiState.update { _uiState.value.copy(preparing = preparing) }
+    _uiState.update { it.copy(preparing = preparing) }
   }
 
   fun addConfigChangedMessage(
@@ -371,5 +396,186 @@ abstract class ChatViewModel() : ViewModel() {
 
   private fun createUiState(): ChatUiState {
     return ChatUiState()
+  }
+
+  /**
+   * Saves the current chat session to the data store.
+   *
+   * Extracts the first text message to use as the title, converts message models to protos, and
+   * updates the persistent storage.
+   *
+   * @param sessionId Unique identifier for the session.
+   * @param messages List of messages to save.
+   * @param originalModel The model active when the session was created.
+   * @param taskId The task associated with this session.
+   */
+  fun saveSession(
+    sessionId: String,
+    messages: List<ChatMessage>,
+    originalModel: String,
+    taskId: String,
+    context: Context? = null,
+  ) {
+    val messagesSnapshot = messages.toList()
+    viewModelScope.launch(Dispatchers.IO) {
+      val firstTextMessage =
+        messagesSnapshot.filterIsInstance<ChatMessageText>().firstOrNull()?.content
+      val title =
+        firstTextMessage?.take(30)?.let { if (it.length == 30) "$it..." else it }
+          ?: "New Chat Session"
+
+      val protoMessages = messagesSnapshot.mapNotNull { msg ->
+        val builder = ChatMessageProto.newBuilder()
+        when (msg) {
+          is ChatMessageText -> {
+            builder
+              .setMessageType("TEXT")
+              .setContent(msg.content)
+              .setSide(mapChatSide(msg.side))
+              .setLatencyMs(msg.latencyMs)
+              .setAccelerator(msg.accelerator)
+              .setHideSenderLabel(msg.hideSenderLabel)
+              .setIsMarkdown(msg.isMarkdown)
+          }
+          is ChatMessageThinking -> {
+            builder
+              .setMessageType("THINKING")
+              .setContent(msg.content)
+              .setSide(mapChatSide(msg.side))
+              .setInProgress(msg.inProgress)
+              .setAccelerator(msg.accelerator)
+              .setHideSenderLabel(msg.hideSenderLabel)
+          }
+          is ChatMessageInfo -> {
+            builder.setMessageType("INFO").setContent(msg.content).setSide(mapChatSide(msg.side))
+          }
+          is ChatMessageWarning -> {
+            builder.setMessageType("WARNING").setContent(msg.content).setSide(mapChatSide(msg.side))
+          }
+          is ChatMessageError -> {
+            builder.setMessageType("ERROR").setContent(msg.content).setSide(mapChatSide(msg.side))
+          }
+          is ChatMessageImage -> {
+            builder
+              .setMessageType("IMAGE")
+              .setSide(mapChatSide(msg.side))
+              .setLatencyMs(msg.latencyMs)
+            synchronized(msg) {
+              val cachedPaths = msg.persistedPaths
+              if (cachedPaths != null) {
+                builder.addAllImageFilePaths(cachedPaths)
+              } else if (context != null) {
+                msg.persistedPaths = buildList {
+                  msg.bitmaps.forEachIndexed { index, bitmap ->
+                    val fileName = "img_${sessionId}_${System.currentTimeMillis()}_$index.png"
+                    val file = File(context.cacheDir, fileName)
+                    FileOutputStream(file).use { fos ->
+                      bitmap.compress(Bitmap.CompressFormat.PNG, 100, fos)
+                    }
+                    add(file.absolutePath)
+                    builder.addImageFilePaths(file.absolutePath)
+                  }
+                }
+              }
+            }
+          }
+          is ChatMessageAudioClip -> {
+            builder
+              .setMessageType("AUDIO_CLIP")
+              .setSide(mapChatSide(msg.side))
+              .setLatencyMs(msg.latencyMs)
+            synchronized(msg) {
+              val cachedPath = msg.persistedPath
+              if (cachedPath != null) {
+                val audioProto =
+                  AudioMessageProto.newBuilder()
+                    .setFilePath(cachedPath)
+                    .setSampleRate(msg.sampleRate)
+                    .build()
+                builder.addAudioClips(audioProto)
+              } else if (context != null) {
+                val fileName = "audio_${sessionId}_${System.currentTimeMillis()}.pcm"
+                val file = File(context.cacheDir, fileName)
+                FileOutputStream(file).use { fos -> fos.write(msg.audioData) }
+                msg.persistedPath = file.absolutePath
+                val audioProto =
+                  AudioMessageProto.newBuilder()
+                    .setFilePath(file.absolutePath)
+                    .setSampleRate(msg.sampleRate)
+                    .build()
+                builder.addAudioClips(audioProto)
+              }
+            }
+          }
+          else -> return@mapNotNull null
+        }
+        builder.build()
+      }
+
+      val sessionProto =
+        ChatSessionProto.newBuilder()
+          .setSessionId(sessionId)
+          .setTitle(title)
+          .setTimestampMs(System.currentTimeMillis())
+          .setOriginalModel(originalModel)
+          .setTaskId(taskId)
+          .addAllMessages(protoMessages)
+          .build()
+
+      userDataDataStore?.updateData { userData ->
+        val currentSessions = userData.chatSessionsList.toMutableList()
+        currentSessions.removeAll { it.sessionId == sessionId }
+        currentSessions.add(sessionProto)
+        userData.toBuilder().clearChatSessions().addAllChatSessions(currentSessions).build()
+      }
+    }
+  }
+
+  /**
+   * Deletes a chat session from persistent storage by its ID.
+   *
+   * @param sessionId The ID of the session to delete.
+   */
+  fun deleteSession(sessionId: String, context: Context? = null) {
+    viewModelScope.launch(Dispatchers.IO) {
+      if (context != null) {
+        val files = context.cacheDir.listFiles()
+        files?.forEach { file ->
+          if (
+            file.name.startsWith("img_${sessionId}_") || file.name.startsWith("audio_${sessionId}_")
+          ) {
+            file.delete()
+          }
+        }
+      }
+      userDataDataStore?.updateData { userData ->
+        val currentSessions = userData.chatSessionsList.filter { it.sessionId != sessionId }
+        userData.toBuilder().clearChatSessions().addAllChatSessions(currentSessions).build()
+      }
+    }
+  }
+
+  /** Clears all saved chat sessions from persistent storage. */
+  fun clearAllSessions(context: Context? = null) {
+    viewModelScope.launch(Dispatchers.IO) {
+      if (context != null) {
+        val files = context.cacheDir.listFiles()
+        files?.forEach { file ->
+          if (file.name.startsWith("img_") || file.name.startsWith("audio_")) {
+            file.delete()
+          }
+        }
+      }
+      userDataDataStore?.updateData { userData -> userData.toBuilder().clearChatSessions().build() }
+    }
+  }
+
+  /** Maps the domain [ChatSide] enum to its corresponding proto representation. */
+  private fun mapChatSide(side: ChatSide): ChatSideProto {
+    return when (side) {
+      ChatSide.USER -> ChatSideProto.CHAT_SIDE_USER
+      ChatSide.AGENT -> ChatSideProto.CHAT_SIDE_MODEL
+      ChatSide.SYSTEM -> ChatSideProto.CHAT_SIDE_SYSTEM
+    }
   }
 }

@@ -2,7 +2,9 @@
 
 Fork of Google AI Edge Gallery focused on a cleaner offline Android experience.
 
-This fork removes the dependency on Firebase/GMS at runtime, removes online model recommendation and download flows, and turns the app into a local-model-first workflow for devices and regions where the upstream experience is not ideal.
+This fork is synced with upstream 1.0.15 code while keeping the OSS-specific behavior:
+no Firebase or FCM runtime dependency, no online model recommendation/download workflow, and a
+local-model-first experience for devices and regions where the upstream app is not ideal.
 
 ## What Changed
 

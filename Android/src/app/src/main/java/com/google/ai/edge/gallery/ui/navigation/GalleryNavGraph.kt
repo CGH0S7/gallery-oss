@@ -16,6 +16,7 @@
 
 package com.google.ai.edge.gallery.ui.navigation
 
+import android.net.Uri
 import android.os.Bundle
 import android.util.Log
 import androidx.activity.compose.BackHandler
@@ -81,11 +82,11 @@ import com.google.ai.edge.gallery.ui.common.ErrorDialog
 import com.google.ai.edge.gallery.ui.common.ModelPageAppBar
 import com.google.ai.edge.gallery.ui.common.chat.ModelDownloadStatusInfoPanel
 import com.google.ai.edge.gallery.ui.home.HomeScreen
-import com.google.ai.edge.gallery.ui.home.PromoScreenGm4
 import com.google.ai.edge.gallery.ui.modelmanager.GlobalModelManager
 import com.google.ai.edge.gallery.ui.modelmanager.ModelInitializationStatusType
 import com.google.ai.edge.gallery.ui.modelmanager.ModelManager
 import com.google.ai.edge.gallery.ui.modelmanager.ModelManagerViewModel
+import com.google.ai.edge.gallery.ui.notifications.NotificationsScreen
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -96,6 +97,7 @@ private const val ROUTE_MODEL_LIST = "model_list"
 private const val ROUTE_MODEL = "route_model"
 private const val ROUTE_BENCHMARK = "benchmark"
 private const val ROUTE_MODEL_MANAGER = "model_manager"
+private const val ROUTE_NOTIFICATIONS = "notifications"
 private const val ENTER_ANIMATION_DURATION_MS = 500
 private val ENTER_ANIMATION_EASING = EaseOutExpo
 private const val ENTER_ANIMATION_DELAY_MS = 100
@@ -156,6 +158,7 @@ fun GalleryNavHost(
   var enableHomeScreenAnimation by remember { mutableStateOf(true) }
   var enableModelListAnimation by remember { mutableStateOf(true) }
   var lastNavigatedModelName = remember { "" }
+  val modelManagerUiState by modelManagerViewModel.uiState.collectAsState()
 
   // Track whether app is in foreground.
   DisposableEffect(lifecycleOwner) {
@@ -188,39 +191,24 @@ fun GalleryNavHost(
   ) {
     // Home screen.
     composable(route = ROUTE_HOMESCREEN) {
-      // Create a state to trigger PromoScreen fade in animation.
-      val promoId = "gm4"
-      Box(modifier = modifier.fillMaxSize()) {
-        var promoDismissed by remember { mutableStateOf(false) }
-
-        val homeScreenContent: @Composable () -> Unit = {
-          HomeScreen(
-            modelManagerViewModel = modelManagerViewModel,
-            tosViewModel = hiltViewModel(),
-            enableAnimation = enableHomeScreenAnimation,
-            navigateToTaskScreen = { task ->
-              pickedTask = task
-              enableModelListAnimation = true
-              navController.navigate(ROUTE_MODEL_LIST)
-              firebaseAnalytics?.logEvent(
-                GalleryEvent.CAPABILITY_SELECT.id,
-                Bundle().apply { putString("capability_name", task.id) },
-              )
-            },
-            onModelsClicked = { navController.navigate(ROUTE_MODEL_MANAGER) },
-            gm4 = true,
+      HomeScreen(
+        modelManagerViewModel = modelManagerViewModel,
+        tosViewModel = hiltViewModel(),
+        enableAnimation = enableHomeScreenAnimation,
+        navigateToTaskScreen = { task ->
+          pickedTask = task
+          enableModelListAnimation = true
+          navController.navigate(ROUTE_MODEL_LIST)
+          firebaseAnalytics?.logEvent(
+            GalleryEvent.CAPABILITY_SELECT.id,
+            Bundle().apply { putString("capability_name", task.id) },
           )
-        }
-
-        // Show home page directly if promo has been viewed.
-        if (modelManagerViewModel.dataStoreRepository.hasViewedPromo(promoId = promoId)) {
-          homeScreenContent()
-        }
-        // If the promo has not been viewed, show promo screen first.
-        else {
-          homeScreenContent()
-        }
-      }
+        },
+        onModelsClicked = { navController.navigate(ROUTE_MODEL_MANAGER) },
+        onNotificationsClicked = { navController.navigate(ROUTE_NOTIFICATIONS) },
+        gm4 = false,
+        modifier = modifier.fillMaxSize(),
+      )
     }
 
     // Model list.
@@ -249,6 +237,13 @@ fun GalleryNavHost(
           onModelClicked = { model ->
             navController.navigate("$ROUTE_MODEL/${it.id}/${model.name}")
           },
+          onBenchmarkClicked = { model ->
+            firebaseAnalytics?.logEvent(
+              GalleryEvent.CAPABILITY_SELECT.id,
+              Bundle().apply { putString("capability_name", "benchmark_${model.name}") },
+            )
+            navController.navigate("$ROUTE_BENCHMARK/${model.name}")
+          },
           navigateUp = {
             enableHomeScreenAnimation = false
             navController.navigateUp()
@@ -259,17 +254,23 @@ fun GalleryNavHost(
 
     // Model page.
     composable(
-      route = "$ROUTE_MODEL/{taskId}/{modelName}",
+      route = "$ROUTE_MODEL/{taskId}/{modelName}?query={query}",
       arguments =
         listOf(
           navArgument("taskId") { type = NavType.StringType },
           navArgument("modelName") { type = NavType.StringType },
+          navArgument("query") {
+            type = NavType.StringType
+            nullable = true
+            defaultValue = null
+          },
         ),
       enterTransition = { slideEnter() },
       exitTransition = { slideExit() },
     ) { backStackEntry ->
       val modelName = backStackEntry.arguments?.getString("modelName") ?: ""
       val taskId = backStackEntry.arguments?.getString("taskId") ?: ""
+      val queryParam = backStackEntry.arguments?.getString("query")
       val scope = rememberCoroutineScope()
       val context = LocalContext.current
 
@@ -291,6 +292,7 @@ fun GalleryNavHost(
                     lastNavigatedModelName = ""
                     navController.navigateUp()
                   },
+                  initialQuery = queryParam,
                 )
             )
           } else {
@@ -385,6 +387,15 @@ fun GalleryNavHost(
       )
     }
 
+    // Notifications page.
+    composable(
+      route = ROUTE_NOTIFICATIONS,
+      enterTransition = { slideUpEnter() },
+      exitTransition = { slideDownExit() },
+    ) {
+      NotificationsScreen(navigateUp = { navController.navigateUp() })
+    }
+
     // Benchmark creation page.
     composable(
       route = "$ROUTE_BENCHMARK/{modelName}",
@@ -410,21 +421,58 @@ fun GalleryNavHost(
   // Handle incoming intents for deep links
   val intent = androidx.activity.compose.LocalActivity.current?.intent
   val data = intent?.data
-  if (data != null) {
+  // Wait until the model manager has been initialized and the tasks are available.
+  if (data != null && modelManagerUiState.tasks.isNotEmpty()) {
     intent.data = null
+    val uriStr = data.toString()
     Log.d(TAG, "navigation link clicked: $data")
-    if (data.toString().startsWith("com.google.ai.edge.gallery://model/")) {
+    // 1. Precise model deep links: com.google.ai.edge.gallery://model/<taskId>/<modelName>
+    if (uriStr.startsWith("com.google.ai.edge.gallery://model/")) {
       if (data.pathSegments.size >= 2) {
         val taskId = data.pathSegments.get(data.pathSegments.size - 2)
         val modelName = data.pathSegments.last()
+        val queryStr = data.getQueryParameter("query")
         modelManagerViewModel.getModelByName(name = modelName)?.let { model ->
-          navController.navigate("$ROUTE_MODEL/${taskId}/${model.name}")
+          val route =
+            if (!queryStr.isNullOrEmpty()) {
+              "$ROUTE_MODEL/${taskId}/${model.name}?query=${Uri.encode(queryStr)}"
+            } else {
+              "$ROUTE_MODEL/${taskId}/${model.name}"
+            }
+          navController.navigate(route)
         }
       } else {
         Log.e(TAG, "Malformed deep link URI received: $data")
       }
-    } else if (data.toString() == "com.google.ai.edge.gallery://global_model_manager") {
+    } else if (uriStr == "com.google.ai.edge.gallery://global_model_manager") {
       navController.navigate(ROUTE_MODEL_MANAGER)
+    } else {
+      // 2. Dynamic task-level deep links: com.google.ai.edge.gallery://<taskId>
+      val host = data.host
+      if (host != null) {
+        val queryStr = data.getQueryParameter("query")
+        val task = modelManagerUiState.tasks.find { it.id == host }
+        if (task != null) {
+          // Pick the first successfully downloaded model or the default active model for this task
+          val defaultModel =
+            task.models.firstOrNull { model ->
+              modelManagerUiState.modelDownloadStatus[model.name]?.status ==
+                ModelDownloadStatusType.SUCCEEDED
+            } ?: task.models.firstOrNull()
+
+          if (defaultModel != null) {
+            val route =
+              if (!queryStr.isNullOrEmpty()) {
+                "$ROUTE_MODEL/${task.id}/${defaultModel.name}?query=${Uri.encode(queryStr)}"
+              } else {
+                "$ROUTE_MODEL/${task.id}/${defaultModel.name}"
+              }
+            navController.navigate(route)
+          } else {
+            Log.e(TAG, "No available model found for task: $host")
+          }
+        }
+      }
     }
   }
 }
@@ -487,7 +535,7 @@ private fun CustomTaskScreen(
           modelManagerViewModel = modelManagerViewModel,
           inProgress = disableAppBarControls,
           modelPreparing = disableAppBarControls,
-          canShowResetSessionButton = false,
+          shouldShowHistoryButton = false,
           useThemeColor = useThemeColor,
           modifier =
             Modifier.onGloballyPositioned { coordinates -> appBarHeight = coordinates.size.height },

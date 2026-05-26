@@ -34,12 +34,13 @@ android {
     applicationId = "com.google.aiedge.gallery"
     minSdk = 31
     targetSdk = 35
-    versionCode = 23
-    versionName = "1.0.11"
+    versionCode = 33
+    versionName = "1.0.15"
 
     // Kept only to satisfy the AppAuth manifest placeholder requirement.
     manifestPlaceholders["appAuthRedirectScheme"] = "com.google.aiedge.gallery.oss"
     manifestPlaceholders["applicationName"] = "com.google.ai.edge.gallery.GalleryApplication"
+    manifestPlaceholders["appIcon"] = "@mipmap/ic_launcher"
 
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
   }
@@ -123,6 +124,9 @@ dependencies {
   debugImplementation(libs.androidx.ui.test.manifest)
   ksp(libs.moshi.kotlin.codegen)
   implementation(libs.mlkit.genai.prompt)
+  implementation(libs.mcp.kotlin.sdk)
+  implementation(libs.ktor.client.android)
+  implementation(libs.ktor.client.core)
 }
 
 protobuf {

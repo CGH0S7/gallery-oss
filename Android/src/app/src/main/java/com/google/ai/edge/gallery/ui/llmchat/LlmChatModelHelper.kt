@@ -28,6 +28,7 @@ import com.google.ai.edge.gallery.data.DEFAULT_TOPK
 import com.google.ai.edge.gallery.data.DEFAULT_TOPP
 import com.google.ai.edge.gallery.data.DEFAULT_VISION_ACCELERATOR
 import com.google.ai.edge.gallery.data.Model
+import com.google.ai.edge.gallery.data.ModelCapability
 import com.google.ai.edge.gallery.runtime.CleanUpListener
 import com.google.ai.edge.gallery.runtime.LlmModelHelper
 import com.google.ai.edge.gallery.runtime.ResultListener
@@ -60,6 +61,7 @@ object LlmChatModelHelper : LlmModelHelper {
   override fun initialize(
     context: Context,
     model: Model,
+    taskId: String,
     supportImage: Boolean,
     supportAudio: Boolean,
     onDone: (String) -> Unit,
@@ -88,6 +90,8 @@ object LlmChatModelHelper : LlmModelHelper {
         Accelerator.GPU.label -> Backend.GPU()
         Accelerator.NPU.label ->
           Backend.NPU(nativeLibraryDir = context.applicationInfo.nativeLibraryDir)
+        Accelerator.TPU.label ->
+          Backend.NPU(nativeLibraryDir = context.applicationInfo.nativeLibraryDir)
         else -> Backend.GPU()
       }
     val shouldEnableImage = supportImage
@@ -97,6 +101,8 @@ object LlmChatModelHelper : LlmModelHelper {
         Accelerator.CPU.label -> Backend.CPU()
         Accelerator.GPU.label -> Backend.GPU()
         Accelerator.NPU.label ->
+          Backend.NPU(nativeLibraryDir = context.applicationInfo.nativeLibraryDir)
+        Accelerator.TPU.label ->
           Backend.NPU(nativeLibraryDir = context.applicationInfo.nativeLibraryDir)
         else -> Backend.CPU()
       }
@@ -116,10 +122,37 @@ object LlmChatModelHelper : LlmModelHelper {
           else null,
       )
 
+    // Check if the model file supports speculative decoding.
+    var supportsSpeculativeDecoding = false
+    // Check if the model file supports speculative decoding.
+    try {
+      com.google.ai.edge.litertlm.Capabilities(modelPath).use {
+        supportsSpeculativeDecoding = it.hasSpeculativeDecodingSupport()
+      }
+    } catch (e: Exception) {
+      // Ignore exceptions and assume not supported.
+    }
     // Create an instance of LiteRT LM engine and conversation.
     try {
+      var speculativeDecoding = false
+      // Check if the model supports speculative decoding for the given task type and if the
+      // speculative decoding is enabled in the settings.
+      if (
+        supportsSpeculativeDecoding &&
+          model.capabilityToTaskTypes[ModelCapability.SPECULATIVE_DECODING]?.contains(taskId) ==
+            true
+      ) {
+        speculativeDecoding =
+          model.getBooleanConfigValue(
+            key = ConfigKeys.ENABLE_SPECULATIVE_DECODING,
+            defaultValue = false,
+          )
+      }
+      ExperimentalFlags.enableSpeculativeDecoding = speculativeDecoding
+      Log.d(TAG, "Speculative decoding enabled: $speculativeDecoding")
       val engine = Engine(engineConfig)
       engine.initialize()
+      ExperimentalFlags.enableSpeculativeDecoding = false
 
       ExperimentalFlags.enableConversationConstrainedDecoding =
         enableConversationConstrainedDecoding
@@ -157,6 +190,7 @@ object LlmChatModelHelper : LlmModelHelper {
     systemInstruction: Contents?,
     tools: List<ToolProvider>,
     enableConversationConstrainedDecoding: Boolean,
+    initialMessages: List<Message>,
   ) {
     try {
       Log.d(TAG, "Resetting conversation for model '${model.name}'")
@@ -184,7 +218,7 @@ object LlmChatModelHelper : LlmModelHelper {
         engine.createConversation(
           ConversationConfig(
             samplerConfig =
-              if (accelerator == Accelerator.NPU.label) {
+              if (accelerator == Accelerator.NPU.label || accelerator == Accelerator.TPU.label) {
                 null
               } else {
                 SamplerConfig(
@@ -195,6 +229,7 @@ object LlmChatModelHelper : LlmModelHelper {
               },
             systemInstruction = systemInstruction,
             tools = tools,
+            initialMessages = initialMessages,
           )
         )
       ExperimentalFlags.enableConversationConstrainedDecoding = false

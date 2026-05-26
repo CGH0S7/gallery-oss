@@ -50,6 +50,7 @@ fun ModelManager(
   navigateUp: () -> Unit,
   onModelClicked: (Model) -> Unit,
   modifier: Modifier = Modifier,
+  onBenchmarkClicked: (Model) -> Unit = {},
 ) {
   // Set title based on the task.
   val title = task.label
@@ -84,7 +85,7 @@ fun ModelManager(
       enableAnimation = enableAnimation,
       onImportModelClicked = { filePickerLauncher.launch(arrayOf("*/*")) },
       onModelClicked = onModelClicked,
-      onBenchmarkClicked = {},
+      onBenchmarkClicked = onBenchmarkClicked,
       modifier = Modifier.fillMaxSize(),
     )
   }
@@ -119,18 +120,3 @@ fun ModelManager(
     }
   }
 }
-
-// @Preview
-// @Composable
-// fun ModelManagerPreview() {
-//   val context = LocalContext.current
-
-//   GalleryTheme {
-//     ModelManager(
-//       viewModel = PreviewModelManagerViewModel(context = context),
-//       onModelClicked = {},
-//       task = TASK_TEST1,
-//       navigateUp = {},
-//     )
-//   }
-// }

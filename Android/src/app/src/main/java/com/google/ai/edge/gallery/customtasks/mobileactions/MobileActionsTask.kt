@@ -66,6 +66,7 @@ class MobileActionsTask @Inject constructor() : CustomTask {
     context: Context,
     coroutineScope: CoroutineScope,
     model: Model,
+    systemInstruction: Contents?,
     onDone: (String) -> Unit,
   ) {
     curActions.clear()
@@ -74,6 +75,7 @@ class MobileActionsTask @Inject constructor() : CustomTask {
     LlmChatModelHelper.initialize(
       context = context,
       model = model,
+      taskId = task.id,
       supportImage = false,
       supportAudio = false,
       onDone = onDone,

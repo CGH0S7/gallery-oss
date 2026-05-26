@@ -19,13 +19,18 @@ package com.google.ai.edge.gallery.ui.llmchat
 import android.content.Context
 import android.graphics.Bitmap
 import android.util.Log
+import androidx.datastore.core.DataStore
 import androidx.lifecycle.viewModelScope
+import com.google.ai.edge.gallery.common.SystemPromptHelper
 import com.google.ai.edge.gallery.data.ConfigKeys
 import com.google.ai.edge.gallery.data.Model
+import com.google.ai.edge.gallery.data.SystemPromptRepository
 import com.google.ai.edge.gallery.data.Task
+import com.google.ai.edge.gallery.proto.UserData
 import com.google.ai.edge.gallery.runtime.runtimeHelper
 import com.google.ai.edge.gallery.ui.common.chat.ChatMessageAudioClip
 import com.google.ai.edge.gallery.ui.common.chat.ChatMessageError
+import com.google.ai.edge.gallery.ui.common.chat.ChatMessageInfo
 import com.google.ai.edge.gallery.ui.common.chat.ChatMessageLoading
 import com.google.ai.edge.gallery.ui.common.chat.ChatMessageText
 import com.google.ai.edge.gallery.ui.common.chat.ChatMessageThinking
@@ -36,17 +41,84 @@ import com.google.ai.edge.gallery.ui.common.chat.ChatViewModel
 import com.google.ai.edge.gallery.ui.modelmanager.ModelManagerViewModel
 import com.google.ai.edge.litertlm.Contents
 import com.google.ai.edge.litertlm.ExperimentalApi
+import com.google.ai.edge.litertlm.Message
 import com.google.ai.edge.litertlm.ToolProvider
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 
 private const val TAG = "AGLlmChatViewModel"
 
 @OptIn(ExperimentalApi::class)
-open class LlmChatViewModelBase() : ChatViewModel() {
+open class LlmChatViewModelBase(
+  private val systemPromptRepository: SystemPromptRepository? = null,
+  userDataDataStore: DataStore<UserData>? = null,
+  private val modelFeedbackRepository: Any? = null,
+) : ChatViewModel(userDataDataStore) {
+  private val _uiSystemPrompt = MutableStateFlow("")
+  val uiSystemPrompt = _uiSystemPrompt.asStateFlow()
+
+  /**
+   * Sets the system prompt in the UI.
+   *
+   * This method updates the UI system prompt without saving it to the repository or resetting the
+   * session. It is primarily used for initializing the UI system prompt.
+   *
+   * @param systemPrompt The new system prompt to set in the UI.
+   */
+  fun setUISystemPrompt(systemPrompt: String) {
+    _uiSystemPrompt.value = systemPrompt
+  }
+
+  /**
+   * Loads the system prompt for the given [task] from the repository.
+   *
+   * @param task The task to load the system prompt for.
+   */
+  fun loadSystemPrompt(task: Task) {
+    viewModelScope.launch {
+      val effectivePrompt =
+        SystemPromptHelper.getEffectiveSystemPrompt(systemPromptRepository, task)
+      _uiSystemPrompt.value = effectivePrompt
+    }
+  }
+
+  /**
+   * Applies a system prompt change to the given [task] and [model].
+   *
+   * This method updates the UI system prompt, saves the new prompt to the repository, and resets
+   * the session with the new prompt.
+   *
+   * @param task The task to apply the system prompt change to.
+   * @param model The model to apply the system prompt change to.
+   * @param newPrompt The new system prompt to apply.
+   * @param systemPromptUpdatedMessage The message to add to the chat after the system prompt is
+   *   updated.
+   */
+  fun applySystemPromptChange(
+    task: Task,
+    model: Model,
+    newPrompt: String,
+    systemPromptUpdatedMessage: String,
+  ) {
+    _uiSystemPrompt.value = newPrompt
+    viewModelScope.launch {
+      systemPromptRepository?.updateSystemPrompt(task.id, newPrompt)
+      resetSession(
+        task = task,
+        model = model,
+        systemInstruction = Contents.of(newPrompt),
+        supportImage = true,
+        supportAudio = true,
+        onDone = { addMessage(model, ChatMessageInfo(content = systemPromptUpdatedMessage)) },
+      )
+    }
+  }
+
   fun generateResponse(
     model: Model,
     input: String,
@@ -254,10 +326,14 @@ open class LlmChatViewModelBase() : ChatViewModel() {
     supportAudio: Boolean = false,
     onDone: () -> Unit = {},
     enableConversationConstrainedDecoding: Boolean = false,
+    initialMessages: List<Message> = listOf(),
+    clearHistory: Boolean = true,
   ) {
     viewModelScope.launch(Dispatchers.Default) {
       setIsResettingSession(true)
-      clearAllMessages(model = model)
+      if (clearHistory) {
+        clearAllMessages(model = model)
+      }
       stopResponse(model = model)
 
       while (true) {
@@ -269,6 +345,7 @@ open class LlmChatViewModelBase() : ChatViewModel() {
             systemInstruction = systemInstruction,
             tools = tools,
             enableConversationConstrainedDecoding = enableConversationConstrainedDecoding,
+            initialMessages = initialMessages,
           )
           break
         } catch (e: Exception) {
@@ -341,8 +418,26 @@ open class LlmChatViewModelBase() : ChatViewModel() {
   }
 }
 
-@HiltViewModel class LlmChatViewModel @Inject constructor() : LlmChatViewModelBase()
+@HiltViewModel
+class LlmChatViewModel
+@Inject
+constructor(
+  systemPromptRepository: SystemPromptRepository,
+  userDataDataStore: DataStore<UserData>,
+) : LlmChatViewModelBase(systemPromptRepository, userDataDataStore, null)
 
-@HiltViewModel class LlmAskImageViewModel @Inject constructor() : LlmChatViewModelBase()
+@HiltViewModel
+class LlmAskImageViewModel
+@Inject
+constructor(
+  systemPromptRepository: SystemPromptRepository,
+  userDataDataStore: DataStore<UserData>,
+) : LlmChatViewModelBase(systemPromptRepository, userDataDataStore, null)
 
-@HiltViewModel class LlmAskAudioViewModel @Inject constructor() : LlmChatViewModelBase()
+@HiltViewModel
+class LlmAskAudioViewModel
+@Inject
+constructor(
+  systemPromptRepository: SystemPromptRepository,
+  userDataDataStore: DataStore<UserData>,
+  ) : LlmChatViewModelBase(systemPromptRepository, userDataDataStore, null)

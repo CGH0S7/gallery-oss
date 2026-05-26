@@ -54,10 +54,32 @@ class SkillProgressAgentAction(
   val customData: Any? = null,
 ) : AgentAction(name = AgentActionName.SKILL_PROGRESS)
 
+// Request Android permission to perform certain actions, e.g. read calendar events.
+class RequestPermissionAgentAction(
+  val permission: String,
+  val result: CompletableDeferred<Boolean> = CompletableDeferred(),
+) : AgentAction(name = AgentActionName.REQUEST_PERMISSION)
+
+/** Represents the result of a permission request in [AskMcpToolCallPermissionAction]. */
+enum class PermissionResult {
+  DENY,
+  ALLOW_ONCE,
+  ALWAYS_ALLOW,
+}
+
+/** An [AgentAction] to request user permission for a specific MCP tool call. */
+class AskMcpToolCallPermissionAction(
+  val toolName: String,
+  val argument: String,
+  val result: CompletableDeferred<PermissionResult> = CompletableDeferred(),
+) : AgentAction(name = AgentActionName.ASK_MCP_TOOL_CALL_PERMISSION)
+
 enum class AgentActionName() {
   CALL_JS_SKILL,
   SKILL_PROGRESS,
   ASK_INFO,
+  REQUEST_PERMISSION,
+  ASK_MCP_TOOL_CALL_PERMISSION,
 }
 
 data class SkillTryOutChip(

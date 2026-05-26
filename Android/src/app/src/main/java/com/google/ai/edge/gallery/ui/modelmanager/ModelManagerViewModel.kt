@@ -26,6 +26,7 @@ import com.google.ai.edge.gallery.AppLifecycleProvider
 import com.google.ai.edge.gallery.BuildConfig
 import com.google.ai.edge.gallery.R
 import com.google.ai.edge.gallery.common.ProjectConfig
+import com.google.ai.edge.gallery.common.SystemPromptHelper
 import com.google.ai.edge.gallery.common.getJsonResponse
 import com.google.ai.edge.gallery.common.isAICoreSupported
 import com.google.ai.edge.gallery.customtasks.common.CustomTask
@@ -41,11 +42,13 @@ import com.google.ai.edge.gallery.data.EMPTY_MODEL
 import com.google.ai.edge.gallery.data.IMPORTS_DIR
 import com.google.ai.edge.gallery.data.Model
 import com.google.ai.edge.gallery.data.ModelAllowlist
+import com.google.ai.edge.gallery.data.ModelCapability
 import com.google.ai.edge.gallery.data.ModelDownloadStatus
 import com.google.ai.edge.gallery.data.ModelDownloadStatusType
 import com.google.ai.edge.gallery.data.NumberSliderConfig
 import com.google.ai.edge.gallery.data.RuntimeType
 import com.google.ai.edge.gallery.data.SOC
+import com.google.ai.edge.gallery.data.SystemPromptRepository
 import com.google.ai.edge.gallery.data.TMP_FILE_EXT
 import com.google.ai.edge.gallery.data.Task
 import com.google.ai.edge.gallery.data.ValueType
@@ -54,6 +57,7 @@ import com.google.ai.edge.gallery.proto.AccessTokenData
 import com.google.ai.edge.gallery.proto.ImportedModel
 import com.google.ai.edge.gallery.proto.Theme
 import com.google.ai.edge.gallery.runtime.aicore.AICoreModelHelper
+import com.google.ai.edge.litertlm.Contents
 import com.google.gson.Gson
 import com.google.gson.JsonSyntaxException
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -192,11 +196,16 @@ constructor(
   val dataStoreRepository: DataStoreRepository,
   private val lifecycleProvider: AppLifecycleProvider,
   private val customTasks: Set<@JvmSuppressWildcards CustomTask>,
-  @param:ApplicationContext private val context: Context,
+  private val systemPromptRepository: SystemPromptRepository,
+  @ApplicationContext private val context: Context,
 ) : ViewModel() {
   private val externalFilesDir = context.getExternalFilesDir(null)
   protected val _uiState = MutableStateFlow(createEmptyUiState())
-  val uiState = _uiState.asStateFlow()
+  open val uiState = _uiState.asStateFlow()
+
+  private var _allowlistModels: MutableList<Model> = mutableListOf()
+  val allowlistModels: List<Model>
+    get() = _allowlistModels
 
   val authService = AuthorizationService(context)
   var curAccessToken: String = ""
@@ -269,16 +278,16 @@ constructor(
   }
 
   fun updateConfigValuesUpdateTrigger() {
-    _uiState.update { _uiState.value.copy(configValuesUpdateTrigger = System.currentTimeMillis()) }
+    _uiState.update { it.copy(configValuesUpdateTrigger = System.currentTimeMillis()) }
   }
 
   fun selectModel(model: Model) {
     if (_uiState.value.selectedModel.name != model.name) {
-      _uiState.update { _uiState.value.copy(selectedModel = model) }
+      _uiState.update { it.copy(selectedModel = model) }
     }
   }
 
-  fun downloadModel(task: Task?, model: Model) {
+  open fun downloadModel(task: Task?, model: Model) {
     // Update status.
     setDownloadStatus(
       curModel = model,
@@ -348,6 +357,16 @@ constructor(
   }
 
   fun deleteModel(model: Model) {
+    // If the currently downloaded model is an updatable version, reset the model to its latest
+    // version and mark it as not updatable upon deletion.
+    if (model.updatable) {
+      model.updatable = false
+      model.latestModelFile?.let {
+        model.version = it.commitHash
+        model.downloadFileName = it.fileName
+      }
+    }
+
     if (model.imported) {
       deleteFilesFromImportDir(model.downloadFileName)
     } else {
@@ -378,13 +397,13 @@ constructor(
       }
       dataStoreRepository.saveImportedModels(importedModels = importedModels)
     }
-    val newUiState =
-      uiState.value.copy(
+    _uiState.update {
+      it.copy(
         modelDownloadStatus = curModelDownloadStatus,
-        tasks = uiState.value.tasks.toList(),
+        tasks = it.tasks.toList(),
         modelImportingUpdateTrigger = System.currentTimeMillis(),
       )
-    _uiState.update { newUiState }
+    }
   }
 
   fun initializeModel(
@@ -447,11 +466,13 @@ constructor(
       }
 
       // Call the model initialization function.
+      val systemPrompt = SystemPromptHelper.getEffectiveSystemPrompt(systemPromptRepository, task)
       getCustomTaskByTaskId(id = task.id)
         ?.initializeModelFn(
           context = context,
           coroutineScope = viewModelScope,
           model = model,
+          systemInstruction = Contents.of(systemPrompt),
           onDone = onDoneFn,
         )
     }
@@ -507,8 +528,6 @@ constructor(
     // Update model download progress.
     val curModelDownloadStatus = uiState.value.modelDownloadStatus.toMutableMap()
     curModelDownloadStatus[curModel.name] = status
-    val newUiState = uiState.value.copy(modelDownloadStatus = curModelDownloadStatus)
-
     // Delete downloaded file if status is failed or not_downloaded.
     if (
       status.status == ModelDownloadStatusType.FAILED ||
@@ -517,7 +536,7 @@ constructor(
       deleteFileFromExternalFilesDir(curModel.downloadFileName)
     }
 
-    _uiState.update { newUiState }
+    _uiState.update { it.copy(modelDownloadStatus = curModelDownloadStatus) }
   }
 
   fun setInitializationStatus(model: Model, status: ModelInitializationStatus) {
@@ -536,7 +555,7 @@ constructor(
           initializedBackends
         }
       curStatus[model.name] = status.copy(initializedBackends = newInitializedBackends)
-      _uiState.update { _uiState.value.copy(modelInitializationStatus = curStatus) }
+      _uiState.update { it.copy(modelInitializationStatus = curStatus) }
     }
   }
 
@@ -547,7 +566,7 @@ constructor(
       if (newHistory.size > TEXT_INPUT_HISTORY_MAX_SIZE) {
         newHistory.removeAt(newHistory.size - 1)
       }
-      _uiState.update { _uiState.value.copy(textInputHistory = newHistory) }
+      _uiState.update { it.copy(textInputHistory = newHistory) }
       dataStoreRepository.saveTextInputHistory(_uiState.value.textInputHistory)
     } else {
       promoteTextInputHistoryItem(text)
@@ -560,7 +579,7 @@ constructor(
       val newHistory = uiState.value.textInputHistory.toMutableList()
       newHistory.removeAt(index)
       newHistory.add(0, text)
-      _uiState.update { _uiState.value.copy(textInputHistory = newHistory) }
+      _uiState.update { it.copy(textInputHistory = newHistory) }
       dataStoreRepository.saveTextInputHistory(_uiState.value.textInputHistory)
     }
   }
@@ -570,13 +589,13 @@ constructor(
     if (index >= 0) {
       val newHistory = uiState.value.textInputHistory.toMutableList()
       newHistory.removeAt(index)
-      _uiState.update { _uiState.value.copy(textInputHistory = newHistory) }
+      _uiState.update { it.copy(textInputHistory = newHistory) }
       dataStoreRepository.saveTextInputHistory(_uiState.value.textInputHistory)
     }
   }
 
   fun clearTextInputHistory() {
-    _uiState.update { _uiState.value.copy(textInputHistory = mutableListOf()) }
+    _uiState.update { it.copy(textInputHistory = mutableListOf()) }
     dataStoreRepository.saveTextInputHistory(_uiState.value.textInputHistory)
   }
 
@@ -663,8 +682,8 @@ constructor(
 
     // Update ui state.
     _uiState.update {
-      uiState.value.copy(
-        tasks = uiState.value.tasks.toList(),
+      it.copy(
+        tasks = it.tasks.toList(),
         modelDownloadStatus = modelDownloadStatus,
         modelInitializationStatus = modelInstances,
         modelImportingUpdateTrigger = System.currentTimeMillis(),
@@ -868,12 +887,11 @@ constructor(
   }
 
   fun loadModelAllowlist() {
-    _uiState.update {
-      uiState.value.copy(loadingModelAllowlist = true, loadingModelAllowlistError = "")
-    }
+    _uiState.update { it.copy(loadingModelAllowlist = true, loadingModelAllowlistError = "") }
 
     viewModelScope.launch(Dispatchers.IO) {
       try {
+        _allowlistModels.clear()
         val curTasks = getActiveCustomTasks().map { it.task }
         for (task in curTasks) {
           task.models.clear()
@@ -979,7 +997,6 @@ constructor(
     val checkedModelNames = mutableSetOf<String>()
     for (customTask in getActiveCustomTasks()) {
       val task = customTask.task
-      task.models.clear()
       tasks.put(key = task.id, value = task)
       for (model in task.models) {
         if (checkedModelNames.contains(model.name)) {
@@ -1060,6 +1077,7 @@ constructor(
     val llmSupportTinyGarden = info.llmConfig.supportTinyGarden
     val llmSupportMobileActions = info.llmConfig.supportMobileActions
     val llmSupportThinking = info.llmConfig.supportThinking
+    val llmSupportSpeculativeDecoding = info.llmConfig.supportSpeculativeDecoding
     val configs: MutableList<Config> =
       createLlmChatConfigs(
           defaultMaxToken = llmMaxToken,
@@ -1068,12 +1086,33 @@ constructor(
           defaultTemperature = info.llmConfig.defaultTemperature,
           accelerators = accelerators,
           supportThinking = llmSupportThinking,
+          supportSpeculativeDecoding = llmSupportSpeculativeDecoding,
         )
         .toMutableList()
+    val capabilities: MutableList<ModelCapability> = mutableListOf()
+    val capabilityToTaskTypes: MutableMap<ModelCapability, List<String>> = mutableMapOf()
+    if (llmSupportThinking) {
+      capabilities.add(ModelCapability.LLM_THINKING)
+      capabilityToTaskTypes[ModelCapability.LLM_THINKING] =
+        listOf(
+          BuiltInTaskId.LLM_CHAT,
+          BuiltInTaskId.LLM_ASK_IMAGE,
+          BuiltInTaskId.LLM_ASK_AUDIO,
+        )
+    }
+    if (llmSupportSpeculativeDecoding) {
+      capabilities.add(ModelCapability.SPECULATIVE_DECODING)
+      capabilityToTaskTypes[ModelCapability.SPECULATIVE_DECODING] =
+        listOf(
+          BuiltInTaskId.LLM_CHAT,
+          BuiltInTaskId.LLM_ASK_IMAGE,
+          BuiltInTaskId.LLM_ASK_AUDIO,
+          BuiltInTaskId.LLM_PROMPT_LAB,
+        )
+    }
     val model =
       Model(
         name = info.fileName,
-        displayName = createImportedModelDisplayName(info.fileName),
         url = "",
         configs = configs,
         sizeInBytes = info.fileSize,
@@ -1085,7 +1124,8 @@ constructor(
         llmSupportAudio = llmSupportAudio,
         llmSupportTinyGarden = llmSupportTinyGarden,
         llmSupportMobileActions = llmSupportMobileActions,
-        llmSupportThinking = llmSupportThinking,
+        capabilities = capabilities.toList(),
+        capabilityToTaskTypes = capabilityToTaskTypes.toMap(),
         llmMaxToken = llmMaxToken,
         accelerators = accelerators,
         // We assume all imported models are LLM for now.
@@ -1095,20 +1135,6 @@ constructor(
     model.preProcess()
 
     return model
-  }
-
-  private fun createImportedModelDisplayName(fileName: String): String {
-    val baseName = fileName.substringBeforeLast(".", missingDelimiterValue = fileName)
-    return baseName
-      .replace('_', ' ')
-      .replace('-', ' ')
-      .replace(Regex("\\s+"), " ")
-      .trim()
-      .split(" ")
-      .filter { it.isNotEmpty() }
-      .joinToString(" ") { word ->
-        word.replaceFirstChar { if (it.isLowerCase()) it.titlecase() else it.toString() }
-      }
   }
 
   private fun groupTasksByCategory(): Map<String, List<Task>> {
@@ -1285,16 +1311,40 @@ constructor(
         error = error,
         initializedBackends = newInitializedBackends,
       )
-    val newUiState = uiState.value.copy(modelInitializationStatus = curModelInstance)
-    _uiState.update { newUiState }
+    _uiState.update { it.copy(modelInitializationStatus = curModelInstance) }
   }
 
-  private fun isModelDownloaded(model: Model): Boolean {
+  @androidx.annotation.VisibleForTesting
+  fun isModelDownloaded(model: Model): Boolean {
+    model.updatable = false
+    // First, check if the model with the current (latest) version has been downloaded.
+    if (checkIfModelDownloaded(model, model.version)) return true
+
+    // If not, check if any updatable model file (previous version) has been downloaded.
+    for (updatableFile in model.updatableModelFiles) {
+      if (updatableFile.commitHash.isEmpty()) continue
+      if (checkIfModelDownloaded(model, updatableFile.commitHash, updatableFile.fileName)) {
+        // If an updatable version is found on the device, update the model's version and file name
+        // to match the downloaded one, and mark it as updatable.
+        model.version = updatableFile.commitHash
+        model.downloadFileName = updatableFile.fileName
+        model.updatable = true
+        return true
+      }
+    }
+
+    return false
+  }
+
+  private fun checkIfModelDownloaded(
+    model: Model,
+    version: String,
+    fileName: String = model.downloadFileName,
+  ): Boolean {
     val modelRelativePath =
-      listOf(model.normalizedName, model.version, model.downloadFileName)
-        .joinToString(File.separator)
+      listOf(model.normalizedName, version, fileName).joinToString(File.separator)
     val downloadedFileExists =
-      model.downloadFileName.isNotEmpty() &&
+      fileName.isNotEmpty() &&
         ((model.localModelFilePathOverride.isEmpty() &&
           isFileInExternalFilesDir(modelRelativePath)) ||
           (model.localModelFilePathOverride.isNotEmpty() &&
@@ -1304,7 +1354,7 @@ constructor(
       model.isZip &&
         model.unzipDir.isNotEmpty() &&
         isFileInExternalFilesDir(
-          listOf(model.normalizedName, model.version, model.unzipDir).joinToString(File.separator)
+          listOf(model.normalizedName, version, model.unzipDir).joinToString(File.separator)
         )
 
     return downloadedFileExists || unzippedDirectoryExists
