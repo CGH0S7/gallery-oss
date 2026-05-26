@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
@@ -60,6 +61,7 @@ import com.google.ai.edge.gallery.ui.common.modelitem.ModelItem
 import kotlinx.coroutines.launch
 
 private const val TAG = "AGGlobalMM"
+private val GLOBAL_MODEL_MANAGER_CONTENT_MAX_WIDTH = 960.dp
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -159,44 +161,52 @@ fun GlobalModelManager(
     snackbarHost = { SnackbarHost(hostState = snackbarHostState) },
   ) { innerPadding ->
     Box {
-      LazyColumn(
+      Box(
+        contentAlignment = Alignment.TopCenter,
         modifier =
-          Modifier.background(MaterialTheme.colorScheme.surfaceContainer)
-            .fillMaxWidth()
-            .padding(horizontal = 16.dp)
-            .padding(top = innerPadding.calculateTopPadding()),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
-        contentPadding =
-          PaddingValues(top = 16.dp, bottom = innerPadding.calculateBottomPadding() + 80.dp),
+          Modifier.background(MaterialTheme.colorScheme.surfaceContainer).fillMaxWidth(),
       ) {
-        item(key = "import_callout") { LocalModelImportCallout(onImportClick = openPicker) }
+        LazyColumn(
+          modifier =
+            Modifier.widthIn(max = GLOBAL_MODEL_MANAGER_CONTENT_MAX_WIDTH)
+              .fillMaxWidth()
+              .padding(horizontal = 16.dp)
+              .padding(top = innerPadding.calculateTopPadding()),
+          verticalArrangement = Arrangement.spacedBy(8.dp),
+          contentPadding =
+            PaddingValues(top = 16.dp, bottom = innerPadding.calculateBottomPadding() + 80.dp),
+        ) {
+          item(key = "import_callout") { LocalModelImportCallout(onImportClick = openPicker) }
 
-        if (importedModels.isNotEmpty()) {
-          item(key = "imported_models_label") {
-            Text(
-              stringResource(R.string.model_list_imported_models_title),
-              color = MaterialTheme.colorScheme.onSurface,
-              style = MaterialTheme.typography.labelLarge,
-              modifier = Modifier.padding(horizontal = 16.dp).padding(top = 24.dp, bottom = 8.dp),
+          if (importedModels.isNotEmpty()) {
+            item(key = "imported_models_label") {
+              Text(
+                stringResource(R.string.model_list_imported_models_title),
+                color = MaterialTheme.colorScheme.onSurface,
+                style = MaterialTheme.typography.labelLarge,
+                modifier =
+                  Modifier.padding(horizontal = 16.dp).padding(top = 24.dp, bottom = 8.dp),
+              )
+            }
+          }
+
+          items(importedModels) { model ->
+            ModelItem(
+              model = model,
+              task = null,
+              modelManagerViewModel = viewModel,
+              onModelClicked = { clickedModel ->
+                val task =
+                  uiState.tasks.firstOrNull { cur -> cur.models.any { it.name == clickedModel.name } }
+                if (task != null) {
+                  onModelSelected(task, clickedModel)
+                }
+              },
+              onBenchmarkClicked = onBenchmarkClicked,
+              expanded = true,
+              showBenchmarkButton = true,
             )
           }
-        }
-
-        items(importedModels) { model ->
-          ModelItem(
-            model = model,
-            task = null,
-            modelManagerViewModel = viewModel,
-            onModelClicked = { clickedModel ->
-              val task = uiState.tasks.firstOrNull { cur -> cur.models.any { it.name == clickedModel.name } }
-              if (task != null) {
-                onModelSelected(task, clickedModel)
-              }
-            },
-            onBenchmarkClicked = onBenchmarkClicked,
-            expanded = true,
-            showBenchmarkButton = true,
-          )
         }
       }
 

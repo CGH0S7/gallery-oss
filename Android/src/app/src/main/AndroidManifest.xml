@@ -60,10 +60,9 @@
             android:name="com.google.ai.edge.gallery.MainActivity"
             android:exported="true"
             android:theme="@style/Theme.Gallery.SplashScreen"
-            android:screenOrientation="portrait"
             android:windowSoftInputMode="adjustResize"
             android:configChanges="uiMode"
-            tools:ignore="DiscouragedApi,LockedOrientationActivity">
+            tools:ignore="DiscouragedApi">
             <!-- This is for putting the app into launcher -->
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />

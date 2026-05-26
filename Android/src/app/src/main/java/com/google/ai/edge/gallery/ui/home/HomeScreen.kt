@@ -44,6 +44,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.requiredWidth
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -128,6 +129,7 @@ import com.google.ai.edge.gallery.ui.theme.customColors
 import com.google.ai.edge.gallery.ui.theme.homePageTitleStyle
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlin.math.min
 
 private const val TAG = "AGHomeScreen"
 private const val TASK_COUNT_ANIMATION_DURATION = 250
@@ -143,6 +145,7 @@ private const val TASK_CARD_ANIMATION_DELAY_OFFSET = 100
 private const val TASK_CARD_ANIMATION_DURATION = 600
 private const val CONTENT_COMPOSABLES_ANIMATION_DURATION = 1200
 private const val CONTENT_COMPOSABLES_OFFSET_Y = 16
+private val HOME_CONTENT_MAX_WIDTH = 1040.dp
 
 /** Navigation destination data */
 private object HomeScreenDestination {
@@ -414,59 +417,66 @@ fun HomeScreen(
                 )
               }
 
-              Column(modifier = Modifier.fillMaxWidth()) {
-                var selectedCategoryIndex by remember { mutableIntStateOf(0) }
-
-                // App title and intro text.
+              Box(
+                contentAlignment = Alignment.TopCenter,
+                modifier = Modifier.fillMaxWidth(),
+              ) {
                 Column(
-                  modifier =
-                    Modifier.padding(
-                        horizontal = if (gm4) 24.dp else 40.dp,
-                        vertical = if (gm4) 0.dp else 48.dp,
-                      )
-                      .padding(top = 24.dp, bottom = 16.dp)
-                      .semantics(mergeDescendants = true) {},
-                  verticalArrangement = Arrangement.spacedBy(8.dp),
+                  modifier = Modifier.widthIn(max = HOME_CONTENT_MAX_WIDTH).fillMaxWidth(),
                 ) {
-                  AppTitle(enableAnimation = enableAnimation)
-                  IntroText(enableAnimation = enableAnimation, gm4 = gm4)
-                }
+                  var selectedCategoryIndex by remember { mutableIntStateOf(0) }
 
-                // Tab header for categories.
-                //
-                // synchronizes the `pagerState` and the `selectedCategoryIndex` to ensure that
-                //  both the tab header and the task list always show the correct category and page.
-                val pagerState = rememberPagerState(pageCount = { sortedCategories.size })
-                LaunchedEffect(pagerState.settledPage) {
-                  selectedCategoryIndex = pagerState.settledPage
-                }
-                if (sortedCategories.size > 1) {
-                  CategoryTabHeader(
+                  // App title and intro text.
+                  Column(
+                    modifier =
+                      Modifier.padding(
+                          horizontal = if (gm4) 24.dp else 40.dp,
+                          vertical = if (gm4) 0.dp else 48.dp,
+                        )
+                        .padding(top = 24.dp, bottom = 16.dp)
+                        .semantics(mergeDescendants = true) {},
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                  ) {
+                    AppTitle(enableAnimation = enableAnimation)
+                    IntroText(enableAnimation = enableAnimation, gm4 = gm4)
+                  }
+
+                  // Tab header for categories.
+                  //
+                  // synchronizes the `pagerState` and the `selectedCategoryIndex` to ensure that
+                  //  both the tab header and the task list always show the correct category and page.
+                  val pagerState = rememberPagerState(pageCount = { sortedCategories.size })
+                  LaunchedEffect(pagerState.settledPage) {
+                    selectedCategoryIndex = pagerState.settledPage
+                  }
+                  if (sortedCategories.size > 1) {
+                    CategoryTabHeader(
+                      sortedCategories = sortedCategories,
+                      selectedIndex = selectedCategoryIndex,
+                      enableAnimation = enableAnimation,
+                      onCategorySelected = { index ->
+                        selectedCategoryIndex = index
+                        scope.launch { pagerState.animateScrollToPage(page = index) }
+                      },
+                    )
+                  }
+
+                  // Task list in a horizontal pager. Each page shows the list of tasks for the
+                  // category.
+                  val grid = gm4
+                  TaskList(
+                    modelManagerViewModel = modelManagerViewModel,
+                    pagerState = pagerState,
                     sortedCategories = sortedCategories,
-                    selectedIndex = selectedCategoryIndex,
+                    tasksByCategories = uiState.tasksByCategory,
                     enableAnimation = enableAnimation,
-                    onCategorySelected = { index ->
-                      selectedCategoryIndex = index
-                      scope.launch { pagerState.animateScrollToPage(page = index) }
-                    },
+                    navigateToTaskScreen = navigateToTaskScreen,
+                    gm4 = gm4,
+                    grid = grid,
                   )
+
+                  Spacer(modifier = Modifier.height(innerPadding.calculateBottomPadding() + 10.dp))
                 }
-
-                // Task list in a horizontal pager. Each page shows the list of tasks for the
-                // category.
-                val grid = gm4
-                TaskList(
-                  modelManagerViewModel = modelManagerViewModel,
-                  pagerState = pagerState,
-                  sortedCategories = sortedCategories,
-                  tasksByCategories = uiState.tasksByCategory,
-                  enableAnimation = enableAnimation,
-                  navigateToTaskScreen = navigateToTaskScreen,
-                  gm4 = gm4,
-                  grid = grid,
-                )
-
-                Spacer(modifier = Modifier.height(innerPadding.calculateBottomPadding() + 10.dp))
               }
             }
 
@@ -536,8 +546,8 @@ private fun AppTitle(enableAnimation: Boolean) {
   val firstLineText = stringResource(R.string.app_name_first_part)
   val secondLineText = stringResource(R.string.app_name_second_part)
   val titleColor = MaterialTheme.customColors.appTitleGradientColors[1]
-  val screenWidthInDp = LocalConfiguration.current.screenWidthDp.dp
-  val fontSize = with(LocalDensity.current) { (screenWidthInDp.toPx() * 0.12f).toSp() }
+  val cappedScreenWidthDp = min(LocalConfiguration.current.screenWidthDp, 900).dp
+  val fontSize = with(LocalDensity.current) { (cappedScreenWidthDp.toPx() * 0.12f).toSp() }
   val titleStyle = homePageTitleStyle.copy(fontSize = fontSize, lineHeight = fontSize)
 
   // First line text "Google AI" and its animation.
