@@ -118,11 +118,11 @@ fun ModelItem(
     if (canExpand) {
       boxModifier.clickable(
         onClick = {
-          if (!model.imported) {
+          if (model.imported) {
+            onModelClicked(model)
+          } else {
             isExpanded = !isExpanded
             onExpanded(isExpanded)
-          } else if (!showBenchmarkButton) {
-            onModelClicked(model)
           }
         },
         interactionSource = remember { MutableInteractionSource() },

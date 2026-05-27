@@ -172,6 +172,17 @@ private val RESET_CONVERSATION_TURN_COUNT_CONFIG =
 
 private val PREDEFINED_LLM_TASK_ORDER =
   listOf(
+    BuiltInTaskId.LLM_CHAT,
+    BuiltInTaskId.LLM_ASK_IMAGE,
+    BuiltInTaskId.LLM_ASK_AUDIO,
+    BuiltInTaskId.LLM_AGENT_CHAT,
+    BuiltInTaskId.LLM_PROMPT_LAB,
+    BuiltInTaskId.LLM_TINY_GARDEN,
+    BuiltInTaskId.LLM_MOBILE_ACTIONS,
+  )
+
+private val PREDEFINED_LLM_TASK_VISUAL_ORDER =
+  listOf(
     BuiltInTaskId.LLM_ASK_IMAGE,
     BuiltInTaskId.LLM_ASK_AUDIO,
     BuiltInTaskId.LLM_CHAT,
@@ -1113,6 +1124,7 @@ constructor(
     val model =
       Model(
         name = info.fileName,
+        displayName = formatImportedModelDisplayName(info.fileName),
         url = "",
         configs = configs,
         sizeInBytes = info.fileSize,
@@ -1135,6 +1147,23 @@ constructor(
     model.preProcess()
 
     return model
+  }
+
+  private fun formatImportedModelDisplayName(fileName: String): String {
+    val withoutExtension =
+      fileName.replace(Regex("\\.(litertlm|task)$", RegexOption.IGNORE_CASE), "")
+    return withoutExtension
+      .replace(Regex("[-_]+"), " ")
+      .trim()
+      .split(Regex("\\s+"))
+      .filter { it.isNotBlank() }
+      .joinToString(" ") { word ->
+        if (word.any { it.isDigit() }) {
+          word.uppercase()
+        } else {
+          word.lowercase().replaceFirstChar { it.uppercaseChar() }
+        }
+      }
   }
 
   private fun groupTasksByCategory(): Map<String, List<Task>> {
@@ -1175,12 +1204,22 @@ constructor(
           }
         }
       for ((index, task) in sortedTasks.withIndex()) {
-        task.index = index
+        task.index = getTaskVisualIndex(task = task, fallbackIndex = index)
       }
       groupedSortedTasks[categoryId] = sortedTasks
     }
 
     return groupedSortedTasks
+  }
+
+  private fun getTaskVisualIndex(task: Task, fallbackIndex: Int): Int {
+    if (task.category.id == Category.LLM.id) {
+      val visualIndex = PREDEFINED_LLM_TASK_VISUAL_ORDER.indexOf(task.id)
+      if (visualIndex >= 0) {
+        return visualIndex
+      }
+    }
+    return fallbackIndex
   }
 
   private fun getCategoryLabel(context: Context, category: CategoryInfo): String {

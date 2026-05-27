@@ -26,6 +26,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
@@ -71,6 +72,7 @@ fun ModelManager(
 
   Scaffold(
     modifier = modifier,
+    containerColor = MaterialTheme.colorScheme.surfaceContainer,
     topBar = {
       GalleryTopAppBar(
         title = title,

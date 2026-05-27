@@ -282,60 +282,64 @@ fun HomeScreen(
       ModalNavigationDrawer(
         drawerState = drawerState,
         drawerContent = {
-          ModalDrawerSheet {
-            Column(modifier = Modifier.padding(16.dp)) {
-              Row(modifier = Modifier.fillMaxWidth()) {
-                SquareDrawerItem(
-                  label = stringResource(R.string.drawer_settings_label),
-                  description = stringResource(R.string.drawer_settings_description),
-                  icon = Icons.Rounded.Settings,
-                  onClick = {
-                    showSettingsDialog = true
-                    scope.launch { drawerState.close() }
-                  },
-                  modifier = Modifier.weight(1f),
-                  iconBrush =
-                    linearGradient(
-                      colors =
-                        listOf(
-                          MaterialTheme.customColors.taskBgGradientColors[2][0],
-                          MaterialTheme.customColors.taskBgGradientColors[2][1],
-                        )
-                    ),
+          ModalDrawerSheet(modifier = Modifier.widthIn(max = 320.dp)) {
+            Column(
+              modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 20.dp),
+              verticalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+              Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                modifier = Modifier.fillMaxWidth().padding(bottom = 6.dp),
+              ) {
+                Icon(
+                  painter = painterResource(R.drawable.logo),
+                  contentDescription = null,
+                  tint = Color.Unspecified,
+                  modifier = Modifier.size(28.dp),
                 )
-                Spacer(modifier = Modifier.width(16.dp))
-                SquareDrawerItem(
-                  label = stringResource(R.string.drawer_models_label),
-                  description = stringResource(R.string.drawer_models_description),
-                  icon = Icons.AutoMirrored.Rounded.ListAlt,
-                  onClick = {
-                    scope.launch { drawerState.close() }
-                    scope.launch {
-                      delay(50)
-                      onModelsClicked()
-                    }
-                  },
-                  modifier = Modifier.weight(1f),
-                  iconBrush =
-                    linearGradient(
-                      colors =
-                        listOf(
-                          MaterialTheme.customColors.taskBgGradientColors[1][0],
-                          MaterialTheme.customColors.taskBgGradientColors[1][1],
-                        )
-                    ),
-                )
+                Column {
+                  Text(
+                    stringResource(HomeScreenDestination.titleRes),
+                    color = MaterialTheme.colorScheme.onSurface,
+                    style = MaterialTheme.typography.titleMedium,
+                  )
+                  Text(
+                    "Local-first workspace",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    style = MaterialTheme.typography.bodySmall,
+                  )
+                }
               }
-              Spacer(modifier = Modifier.height(16.dp))
-              Row(modifier = Modifier.fillMaxWidth()) {
-              }
+
+              CompactDrawerItem(
+                label = stringResource(R.string.drawer_models_label),
+                description = stringResource(R.string.drawer_models_description),
+                icon = Icons.AutoMirrored.Rounded.ListAlt,
+                onClick = {
+                  scope.launch { drawerState.close() }
+                  scope.launch {
+                    delay(50)
+                    onModelsClicked()
+                  }
+                },
+              )
+              CompactDrawerItem(
+                label = stringResource(R.string.drawer_settings_label),
+                description = stringResource(R.string.drawer_settings_description),
+                icon = Icons.Rounded.Settings,
+                onClick = {
+                  showSettingsDialog = true
+                  scope.launch { drawerState.close() }
+                },
+              )
             }
           }
         },
         gesturesEnabled = drawerState.isOpen,
       ) {
         Scaffold(
-          containerColor = MaterialTheme.colorScheme.background,
+          containerColor = MaterialTheme.colorScheme.surfaceContainer,
           topBar = {
             // Top bar animation:
             //
@@ -838,6 +842,58 @@ private fun TaskList(
             square = false,
           )
         }
+      }
+    }
+  }
+}
+
+@Composable
+private fun CompactDrawerItem(
+  label: String,
+  description: String,
+  icon: ImageVector,
+  onClick: () -> Unit,
+  modifier: Modifier = Modifier,
+) {
+  Card(
+    modifier =
+      modifier
+        .fillMaxWidth()
+        .clip(RoundedCornerShape(16.dp))
+        .clickable(onClick = onClick),
+    colors =
+      CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
+  ) {
+    Row(
+      modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 12.dp),
+      verticalAlignment = Alignment.CenterVertically,
+      horizontalArrangement = Arrangement.spacedBy(14.dp),
+    ) {
+      Box(
+        modifier =
+          Modifier.size(40.dp)
+            .clip(RoundedCornerShape(12.dp))
+            .background(MaterialTheme.colorScheme.secondaryContainer),
+        contentAlignment = Alignment.Center,
+      ) {
+        Icon(
+          imageVector = icon,
+          contentDescription = null,
+          tint = MaterialTheme.colorScheme.onSecondaryContainer,
+        )
+      }
+      Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        Text(
+          label,
+          color = MaterialTheme.colorScheme.onSurface,
+          style = MaterialTheme.typography.titleSmall,
+        )
+        Text(
+          description,
+          color = MaterialTheme.colorScheme.onSurfaceVariant,
+          style = MaterialTheme.typography.bodySmall,
+          maxLines = 1,
+        )
       }
     }
   }

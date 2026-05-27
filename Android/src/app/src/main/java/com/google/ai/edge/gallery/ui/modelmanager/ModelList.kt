@@ -68,7 +68,6 @@ import com.google.ai.edge.gallery.data.Task
 import com.google.ai.edge.gallery.ui.common.ClickableLink
 import com.google.ai.edge.gallery.ui.common.RevealingText
 import com.google.ai.edge.gallery.ui.common.TaskIcon
-import com.google.ai.edge.gallery.ui.common.getTaskBgColor
 import com.google.ai.edge.gallery.ui.common.getTaskBgGradientColors
 import com.google.ai.edge.gallery.ui.common.modelitem.ModelItem
 import com.google.ai.edge.gallery.ui.common.rememberDelayedAnimationProgress
@@ -184,7 +183,7 @@ fun ModelList(
 
   Box(
     contentAlignment = Alignment.BottomEnd,
-    modifier = Modifier.background(color = getTaskBgColor(task = task)),
+    modifier = Modifier.background(color = MaterialTheme.colorScheme.surfaceContainer),
   ) {
     Box(contentAlignment = Alignment.TopCenter, modifier = Modifier.fillMaxWidth()) {
       LazyColumn(
